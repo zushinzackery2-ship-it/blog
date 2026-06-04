@@ -1,0 +1,4 @@
+User-agent: *
+Disallow: /_astro/
+
+Sitemap: https://zushinzackery2-ship-it.github.io/AAATest/sitemap-index.xml
