@@ -1,11 +1,11 @@
-<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Vernal</title><description>Reverse engineering notes</description><link>https://zushinzackery2-ship-it.github.io/AAATest/</link><templateTheme>Firefly</templateTheme><templateThemeVersion>6.10.9</templateThemeVersion><templateThemeUrl>https://github.com/zushinzackery2-ship-it</templateThemeUrl><lastBuildDate>2026年6月5日 04:39:45</lastBuildDate><item><title>Vulkan / DXGI / D3D12 Swapchain 离线逆向结论</title><link>https://zushinzackery2-ship-it.github.io/AAATest/posts/vulkan-dxgi-d3d12-swapchain-analysis/</link><guid isPermaLink="true">https://zushinzackery2-ship-it.github.io/AAATest/posts/vulkan-dxgi-d3d12-swapchain-analysis/</guid><description>当前证据支持的驱动行为链如下：nvlddmkm.sys 是 NVIDIA kernel miniport，负责 WDDM 内核侧 adapter、显存、调度队列、DMA buffer、page fault、tile/comptag、present sync 等行为。</description><pubDate>Fri, 05 Jun 2026 00:00:00 GMT</pubDate><content:encoded>&lt;section&gt;&lt;h2&gt;NVIDIA 驱动行为结论&lt;a href=&quot;#nvidia-驱动行为结论&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;当前证据支持的驱动行为链如下：&lt;/p&gt;&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;nvlddmkm.sys&lt;/code&gt; 是 NVIDIA kernel miniport，负责 WDDM 内核侧 adapter、显存、调度队列、DMA buffer、page fault、tile/comptag、present sync 等行为。&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;nvldumdx.dll&lt;/code&gt; 是注册表声明的 WDDM 用户态驱动入口，导出 &lt;code&gt;OpenAdapter&lt;/code&gt; / &lt;code&gt;OpenAdapter10&lt;/code&gt; / &lt;code&gt;OpenAdapter10_2&lt;/code&gt; / &lt;code&gt;OpenAdapter12&lt;/code&gt;，同时提供 &lt;code&gt;NVAPI_Thunk&lt;/code&gt;、&lt;code&gt;NVENCODEAPI_Thunk&lt;/code&gt;、&lt;code&gt;NVDEV_Thunk&lt;/code&gt;。&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;nvd3dumx.dll&lt;/code&gt; 是另一条 NVIDIA D3D 用户态驱动入口，导出 &lt;code&gt;OpenAdapter&lt;/code&gt; / &lt;code&gt;QueryOglResource&lt;/code&gt;。&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;nvwgf2umx.dll&lt;/code&gt; 是重型 NVIDIA D3D 图形 UMD，静态导入 &lt;code&gt;dxgi.dll!CreateDXGIFactory2&lt;/code&gt;，并存在代码区 IAT 跳板；它具备主动进入 DXGI factory 路径的能力。&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;nvoglv64.dll&lt;/code&gt; 同时承担 OpenGL ICD、Vulkan ICD、&lt;code&gt;VK_LAYER_NV_optimus&lt;/code&gt;、&lt;code&gt;VK_LAYER_NV_present/GR2608&lt;/code&gt;；它是 Vulkan/OpenGL 用户态路径的核心入口。&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;nvapi64.dll&lt;/code&gt; 只公开 &lt;code&gt;nvapi_QueryInterface&lt;/code&gt; / &lt;code&gt;nvapi_Direct_GetMethod&lt;/code&gt;，具体能力通过内部 method table 暴露，不靠大量导出函数暴露。&lt;/li&gt;
-&lt;/ul&gt;&lt;p&gt;驱动行为链可以拆成两条：&lt;/p&gt;
+<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Vernal</title><description>Reverse engineering notes</description><link>https://zushinzackery2-ship-it.github.io/AAATest/</link><templateTheme>Firefly</templateTheme><templateThemeVersion>6.10.9</templateThemeVersion><templateThemeUrl>https://github.com/zushinzackery2-ship-it</templateThemeUrl><lastBuildDate>2026年6月5日 04:50:19</lastBuildDate><item><title>Vulkan 游戏中 DXGI/D3D12 Swapchain 的来源分析</title><link>https://zushinzackery2-ship-it.github.io/AAATest/posts/vulkan-dxgi-d3d12-swapchain-source/</link><guid isPermaLink="true">https://zushinzackery2-ship-it.github.io/AAATest/posts/vulkan-dxgi-d3d12-swapchain-source/</guid><description>使用 Vulkan 渲染的游戏，在抓帧或调试工具中却可能出现 DXGI/D3D12 相关对象。本文通过静态逆向分析，定位这些对象的来源路径，并给出排查方法。</description><pubDate>Fri, 05 Jun 2026 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;&lt;p&gt;使用 Vulkan 渲染的游戏，在抓帧或调试工具中却可能出现 DXGI/D3D12 相关对象。本文通过静态逆向分析，定位这些对象的来源路径，并给出排查方法。&lt;/p&gt;&lt;/blockquote&gt;
+&lt;section&gt;&lt;h2&gt;一、问题描述&lt;a href=&quot;#一问题描述&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;在分析 Vulkan 渲染的游戏时，常观察到以下现象：&lt;/p&gt;&lt;ul&gt;
+&lt;li&gt;抓帧工具（RenderDoc、PIX）中出现 &lt;code&gt;IDXGISwapChain&lt;/code&gt; 对象&lt;/li&gt;
+&lt;li&gt;进程监控工具显示加载了 &lt;code&gt;d3d12.dll&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;内存分析器中发现 &lt;code&gt;ID3D12Device&lt;/code&gt; 实例&lt;/li&gt;
+&lt;/ul&gt;&lt;p&gt;这些对象并非由游戏业务代码直接创建，而是来自驱动层或 overlay 层的间接引入。本文通过静态证据分析其来源。&lt;/p&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;二、Windows 图形栈的分层结构&lt;a href=&quot;#二windows-图形栈的分层结构&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;理解这个问题的关键是认识到 Windows 图形栈的分层：&lt;/p&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;应用层：游戏代码（调用 Vulkan API）&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;API 层：vulkan-1.dll（Vulkan Loader）&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;5&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;驱动用户态：nvoglv64.dll（NVIDIA Vulkan ICD + Present Layer）&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;6&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;7&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;系统显示栈：WDDM / DXGI / DWM&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;8&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;9&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;驱动内核态：nvlddmkm.sys（WDDM Miniport）&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;Vulkan 是渲染 API，负责“画什么”。Windows 显示基础设施（WDDM/DXGI/DWM）负责“怎么显示到屏幕上”。两者不是替代关系，而是上下层关系。&lt;/p&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;三、可能引入 DXGI 对象的模块&lt;a href=&quot;#三可能引入-dxgi-对象的模块&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;对游戏进程可能加载的模块进行静态分析，以下模块具备引入 DXGI 对象的能力：&lt;/p&gt;
 
 
 
@@ -22,8 +22,6 @@
 
 
 
-&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;路径&lt;/th&gt;&lt;th&gt;行为链&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;Vulkan / OpenGL&lt;/td&gt;&lt;td&gt;&lt;code&gt;vulkan-1.dll&lt;/code&gt; / OpenGL loader -&amp;gt; &lt;code&gt;nvoglv64.dll&lt;/code&gt; -&amp;gt; &lt;code&gt;vk_icd*&lt;/code&gt; / &lt;code&gt;vk_optimus*&lt;/code&gt; / &lt;code&gt;vk_gr2608*&lt;/code&gt; / &lt;code&gt;Drv*&lt;/code&gt; -&amp;gt; D3DKMT / WDDM -&amp;gt; &lt;code&gt;nvlddmkm.sys&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;D3D / DXGI&lt;/td&gt;&lt;td&gt;D3D runtime / &lt;code&gt;dxgi.dll&lt;/code&gt; -&amp;gt; &lt;code&gt;nvldumdx.dll&lt;/code&gt; / &lt;code&gt;nvd3dumx.dll&lt;/code&gt; / &lt;code&gt;nvwgf2umx.dll&lt;/code&gt; -&amp;gt; NVAPI / internal UMD -&amp;gt; DxgKrnl / dxgmms2 -&amp;gt; &lt;code&gt;nvlddmkm.sys&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;证据强度分级&lt;a href=&quot;#证据强度分级&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;
 
 
 
@@ -37,6 +35,12 @@
 
 
 
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;模块&lt;/th&gt;&lt;th&gt;类型&lt;/th&gt;&lt;th&gt;DXGI/D3D 相关能力&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;nvwgf2umx.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;NVIDIA D3D UMD&lt;/td&gt;&lt;td&gt;静态导入 &lt;code&gt;CreateDXGIFactory2&lt;/code&gt;，代码区存在 IAT 跳板&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;EOSOVH-Win64-Shipping.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;EOS Overlay&lt;/td&gt;&lt;td&gt;静态导入 &lt;code&gt;D3D11CreateDevice&lt;/code&gt; / &lt;code&gt;D3D11CreateDeviceAndSwapChain&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;SteamOverlayVulkanLayer64.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;Steam Overlay&lt;/td&gt;&lt;td&gt;拦截 Vulkan present，但无静态 D3D/DXGI 创建入口&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;graphics-hook64.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;OBS Capture&lt;/td&gt;&lt;td&gt;纯 capture，无静态 D3D/DXGI 创建入口&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;p&gt;下面逐项分析。&lt;/p&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;四、NVIDIA 驱动路径（最可能来源）&lt;a href=&quot;#四nvidia-驱动路径最可能来源&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;section&gt;&lt;h3&gt;4.1 Vulkan ICD 与 Present Layer&lt;a href=&quot;#41-vulkan-icd-与-present-layer&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;code&gt;vulkan-1.dll&lt;/code&gt; 通过 &lt;code&gt;nv-vk64.json&lt;/code&gt; 找到 &lt;code&gt;nvoglv64.dll&lt;/code&gt;。该 DLL 同时承担：&lt;/p&gt;&lt;ul&gt;
+&lt;li&gt;Vulkan ICD（标准 Vulkan 驱动入口）&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VK_LAYER_NV_optimus&lt;/code&gt;（双显卡切换层）&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;VK_LAYER_NV_present&lt;/code&gt; / GR2608（Present 处理层）&lt;/li&gt;
+&lt;/ul&gt;&lt;p&gt;Present Layer 的入口函数：&lt;/p&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;vk_gr2608GetInstanceProcAddr&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;vk_gr2608GetDeviceProcAddr&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;这说明 NVIDIA 在标准 Vulkan ICD 之外，插入了一个专门处理 present 的层。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;4.2 D3DKMT 边界&lt;a href=&quot;#42-d3dkmt-边界&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;code&gt;nvoglv64.dll&lt;/code&gt; 静态导入 &lt;code&gt;GDI32.dll!D3DKMTEnumAdapters2&lt;/code&gt;，且代码区存在 IAT 跳板：&lt;/p&gt;
 
 
 
@@ -53,6 +57,7 @@
 
 
 
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;模块&lt;/th&gt;&lt;th&gt;边界 API&lt;/th&gt;&lt;th&gt;引用位置&lt;/th&gt;&lt;th&gt;指令&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;nvoglv64.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;D3DKMTEnumAdapters2&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;0x1491c38&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;jmp qword ptr [rip + ...]&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;p&gt;D3DKMT 是 WDDM 用户态接口。Vulkan 驱动枚举适配器，说明它需要与 Windows 显示基础设施交互。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;4.3 DXGI Factory 能力&lt;a href=&quot;#43-dxgi-factory-能力&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;code&gt;nvwgf2umx.dll&lt;/code&gt; 是 NVIDIA D3D 用户态驱动，具备明确的 DXGI 能力：&lt;/p&gt;
 
 
 
@@ -73,8 +78,6 @@
 
 
 
-&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;结论&lt;/th&gt;&lt;th&gt;证据强度&lt;/th&gt;&lt;th&gt;可写进博客的表述&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;nvoglv64.dll&lt;/code&gt; 是 Vulkan ICD / OpenGL ICD / NVIDIA implicit layer 承载体&lt;/td&gt;&lt;td&gt;高&lt;/td&gt;&lt;td&gt;manifest + exports 双证据，可作为确定结论&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;nvoglv64.dll&lt;/code&gt; 通过 GDI/D3DKMT 枚举 adapter&lt;/td&gt;&lt;td&gt;高&lt;/td&gt;&lt;td&gt;&lt;code&gt;D3DKMTEnumAdapters2&lt;/code&gt; 静态导入 + &lt;code&gt;.text&lt;/code&gt; IAT 跳板，可作为确定结论&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;nvwgf2umx.dll&lt;/code&gt; 具备进入 DXGI factory 的能力&lt;/td&gt;&lt;td&gt;高&lt;/td&gt;&lt;td&gt;&lt;code&gt;CreateDXGIFactory2&lt;/code&gt; 静态导入 + &lt;code&gt;.text&lt;/code&gt; IAT 跳板，可作为确定结论&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;nvwgf2umx.dll&lt;/code&gt; 会查询 Windows display topology&lt;/td&gt;&lt;td&gt;高&lt;/td&gt;&lt;td&gt;&lt;code&gt;QueryDisplayConfig&lt;/code&gt; / &lt;code&gt;GetDisplayConfigBufferSizes&lt;/code&gt; 静态导入 + &lt;code&gt;.text&lt;/code&gt; call 引用，可作为确定结论&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;nvlddmkm.sys&lt;/code&gt; 参与内核 DPC / work item / physical address / MMIO 边界&lt;/td&gt;&lt;td&gt;高&lt;/td&gt;&lt;td&gt;ntoskrnl 导入 + 多处 IAT call 引用，可作为确定结论&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;nvlddmkm.sys&lt;/code&gt; 管理 WDDM/VIDMM/HwQueue/DMA/page fault/tile/comptag/present sync&lt;/td&gt;&lt;td&gt;中高&lt;/td&gt;&lt;td&gt;大量调试字符串 + 驱动分区 + 内核导入，可作为行为域结论，不能写成完整算法复原&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;VK_LAYER_NV_present/GR2608&lt;/code&gt; 具体如何落到 DXGI/DWM/WDDM present&lt;/td&gt;&lt;td&gt;中&lt;/td&gt;&lt;td&gt;manifest + resolver + swapchain 字符串支持，但缺少反编译控制流 / runtime caller stack，写成“present 路径关键嫌疑点”&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;NVIDIA 驱动内部完整调度算法、显存淘汰算法、page fault 处理细节&lt;/td&gt;&lt;td&gt;低&lt;/td&gt;&lt;td&gt;当前不能写成已复原，只能写成从字符串和边界观察到相关行为域&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;新增调用边界证据&lt;a href=&quot;#新增调用边界证据&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;
 
 
 
@@ -83,6 +86,9 @@
 
 
 
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;模块&lt;/th&gt;&lt;th&gt;边界 API&lt;/th&gt;&lt;th&gt;引用位置&lt;/th&gt;&lt;th&gt;指令&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;nvwgf2umx.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;CreateDXGIFactory2&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;0xf2c318&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;jmp qword ptr [rip + ...]&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;nvwgf2umx.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;GetDisplayConfigBufferSizes&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;0xbb695f&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;call qword ptr [rip + ...]&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;nvwgf2umx.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;QueryDisplayConfig&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;0xbb69e0&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;call qword ptr [rip + ...]&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;p&gt;&lt;code&gt;CreateDXGIFactory2&lt;/code&gt; 是创建 DXGI 对象的标准入口。代码区存在 IAT 跳板，说明这不是单纯的导入表存在，而是实际会执行的代码路径。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;4.4 路径总结&lt;a href=&quot;#44-路径总结&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;游戏调用 vkQueuePresentKHR&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;nvoglv64.dll (Vulkan ICD + VK_LAYER_NV_present)&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;5&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;Windows WSI / WDDM 显示栈&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;6&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;7&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;nvwgf2umx.dll (NVIDIA D3D UMD，具备 CreateDXGIFactory2)&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;8&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;9&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;出现 DXGI 相关对象&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;Vulkan present 最终必须进入 Windows 显示栈。NVIDIA D3D UMD 参与 DXGI factory 流程时，会创建或引用 DXGI 对象。这是 Windows 图形栈分层架构的正常行为，不是异常。&lt;/p&gt;&lt;/section&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;五、Overlay 路径&lt;a href=&quot;#五overlay-路径&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;section&gt;&lt;h3&gt;5.1 EOS Overlay&lt;a href=&quot;#51-eos-overlay&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;code&gt;EOSOVH-Win64-Shipping.dll&lt;/code&gt; 具备明确的 D3D11 能力：&lt;/p&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;静态导入：d3d11.dll!D3D11CreateDevice&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;静态导入：d3d11.dll!D3D11CreateDeviceAndSwapChain&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;代码区 IAT 跳板：确认存在&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;它能创建 D3D11 设备和交换链，但当前样本中&lt;strong&gt;没有 D3D12 创建入口&lt;/strong&gt;。因此如果观察到的是 D3D12 对象，EOS overlay 不是直接创建者。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;5.2 Steam Overlay&lt;a href=&quot;#52-steam-overlay&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;导出表显示它拦截 Vulkan present：&lt;/p&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;vkCreateSwapchainKHR&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;vkQueuePresentKHR&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;vkCreateWin32SurfaceKHR&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;但当前样本中&lt;strong&gt;未静态导入 DXGI/D3D11/D3D12 创建入口&lt;/strong&gt;。它能改写 Vulkan present 行为，但没有直接创建 DXGI 对象的证据。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;5.3 OBS Capture&lt;a href=&quot;#53-obs-capture&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;只有 Vulkan layer negotiate 入口，当前样本中无静态 D3D/DXGI 创建入口。&lt;/p&gt;&lt;/section&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;六、来源判断&lt;a href=&quot;#六来源判断&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;
 
 
 
@@ -114,19 +120,6 @@
 
 
 
-&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;模块&lt;/th&gt;&lt;th&gt;边界 API&lt;/th&gt;&lt;th&gt;证据&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;nvoglv64.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;GDI32.dll!D3DKMTEnumAdapters2&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;evidence/graphics-stack/nvoglv64.d3dkmt.import_xrefs.json&lt;/code&gt; 显示 &lt;code&gt;.text&lt;/code&gt; 内存在 &lt;code&gt;jmp qword ptr [rip + ...]&lt;/code&gt; IAT 跳板&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;nvwgf2umx.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;dxgi.dll!CreateDXGIFactory2&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;evidence/graphics-stack/nvwgf2umx.dxgi_display.import_xrefs.json&lt;/code&gt; 显示 &lt;code&gt;.text&lt;/code&gt; 内存在 &lt;code&gt;jmp qword ptr [rip + ...]&lt;/code&gt; IAT 跳板&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;nvwgf2umx.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;USER32.dll!GetDisplayConfigBufferSizes&lt;/code&gt; / &lt;code&gt;QueryDisplayConfig&lt;/code&gt;&lt;/td&gt;&lt;td&gt;同一 xref 文件显示 &lt;code&gt;.text&lt;/code&gt; 内存在直接 &lt;code&gt;call qword ptr [rip + ...]&lt;/code&gt; 引用&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;nvlddmkm.sys&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;ntoskrnl.exe!KeInsertQueueDpc&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;evidence/graphics-stack/nvlddmkm.kernel.import_xrefs.json&lt;/code&gt; 显示 &lt;code&gt;.text&lt;/code&gt; 与 &lt;code&gt;_DDTEXT&lt;/code&gt; 多处 DPC 调用引用&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;nvlddmkm.sys&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;ntoskrnl.exe!MmGetPhysicalAddress&lt;/code&gt;&lt;/td&gt;&lt;td&gt;同一 xref 文件显示 &lt;code&gt;PAGE_MCM&lt;/code&gt; 内存在物理地址查询调用引用&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;nvlddmkm.sys&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;ntoskrnl.exe!EtwWriteTransfer&lt;/code&gt; / &lt;code&gt;IoQueueWorkItemEx&lt;/code&gt; / &lt;code&gt;MmMapIoSpace&lt;/code&gt; / &lt;code&gt;MmUnmapIoSpace&lt;/code&gt;&lt;/td&gt;&lt;td&gt;同一 xref 文件确认这些内核边界作为静态导入存在&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;p&gt;当前离线证据支持这个判断：&lt;/p&gt;&lt;ul&gt;
-&lt;li&gt;Vulkan 入口来自 Windows Vulkan loader，真实 NVIDIA ICD 是 &lt;code&gt;nvoglv64.dll&lt;/code&gt;。&lt;/li&gt;
-&lt;li&gt;NVIDIA 自带 &lt;code&gt;VK_LAYER_NV_present&lt;/code&gt;，实现入口在 &lt;code&gt;nvoglv64.dll&lt;/code&gt;，描述为 &lt;code&gt;NVIDIA GR2608 layer&lt;/code&gt;，这是当前最值得怀疑的 Vulkan present 底层路径。&lt;/li&gt;
-&lt;li&gt;NVIDIA D3D 用户态驱动 &lt;code&gt;nvwgf2umx.dll&lt;/code&gt; 明确导入 &lt;code&gt;dxgi.dll!CreateDXGIFactory2&lt;/code&gt;，并存在代码区 IAT 跳板。&lt;/li&gt;
-&lt;li&gt;Steam Vulkan overlay 明确拦截 Vulkan swapchain/present 入口，但当前副本没有静态导入 DXGI/D3D11/D3D12 创建入口。&lt;/li&gt;
-&lt;li&gt;EOS Vulkan overlay 明确有 Vulkan hook 入口，同时静态导入 &lt;code&gt;d3d11.dll!D3D11CreateDevice&lt;/code&gt; 和 &lt;code&gt;D3D11CreateDeviceAndSwapChain&lt;/code&gt;，并存在代码区 IAT 跳板；它能创建 D3D11 设备/交换链，但当前离线证据不是 D3D12 创建者证据。&lt;/li&gt;
-&lt;li&gt;OBS Vulkan layer 只有 Vulkan layer negotiate 入口，当前副本没有静态导入 DXGI/D3D11/D3D12 创建入口。&lt;/li&gt;
-&lt;/ul&gt;&lt;p&gt;所以，“Vulkan 游戏进程里看到 DXGI/D3D12 swapchain”这件事，当前最合理的底层解释不是 GameAssembly 业务层显式创建，而是以下路径之一：&lt;/p&gt;&lt;ol&gt;
-&lt;li&gt;NVIDIA Vulkan WSI / &lt;code&gt;VK_LAYER_NV_present&lt;/code&gt; / 驱动 present 路径进入 DXGI/WDDM 显示栈。&lt;/li&gt;
-&lt;li&gt;NVIDIA D3D 用户态驱动参与 DXGI factory / swapchain 相关流程。&lt;/li&gt;
-&lt;li&gt;overlay/capture 层在 Vulkan present 外侧额外创建自己的图形资源；其中 EOS 有 D3D11 证据，Steam/OBS 当前没有静态 D3D/DXGI 创建证据。&lt;/li&gt;
-&lt;/ol&gt;&lt;p&gt;当前离线证据还不能单独证明“终末地进程中那个 D3D12 swapchain 的精确创建调用栈”。精确创建者必须抓运行态 caller module / call stack。&lt;/p&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;证据索引&lt;a href=&quot;#证据索引&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;
 
 
 
@@ -136,6 +129,8 @@
 
 
 
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;来源&lt;/th&gt;&lt;th&gt;能创建 DXGI&lt;/th&gt;&lt;th&gt;能创建 D3D12&lt;/th&gt;&lt;th&gt;证据强度&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;NVIDIA 驱动 (&lt;code&gt;nvwgf2umx.dll&lt;/code&gt;)&lt;/td&gt;&lt;td&gt;是，&lt;code&gt;CreateDXGIFactory2&lt;/code&gt; IAT&lt;/td&gt;&lt;td&gt;间接可能&lt;/td&gt;&lt;td&gt;高&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;EOS Overlay&lt;/td&gt;&lt;td&gt;是，D3D11 创建&lt;/td&gt;&lt;td&gt;否，无 D3D12 证据&lt;/td&gt;&lt;td&gt;中&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Steam Overlay&lt;/td&gt;&lt;td&gt;否，无静态证据&lt;/td&gt;&lt;td&gt;否&lt;/td&gt;&lt;td&gt;低&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;OBS Capture&lt;/td&gt;&lt;td&gt;否&lt;/td&gt;&lt;td&gt;否&lt;/td&gt;&lt;td&gt;低&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;游戏自身&lt;/td&gt;&lt;td&gt;无 Vulkan 引擎直接创建 D3D12 证据&lt;/td&gt;&lt;td&gt;无&lt;/td&gt;&lt;td&gt;低&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;p&gt;最可能的来源是 &lt;strong&gt;NVIDIA 驱动路径&lt;/strong&gt;：Vulkan present 经 WSI 进入 Windows 显示栈，NVIDIA D3D UMD 参与 DXGI factory 流程，间接触发 DXGI 对象的创建。&lt;/p&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;七、如何确认精确来源&lt;a href=&quot;#七如何确认精确来源&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;静态分析可以缩小范围，确认精确来源需要运行态证据。在以下 API 上设置断点，记录调用栈：&lt;/p&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;dxgi.dll!CreateDXGIFactory&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;dxgi.dll!CreateDXGIFactory1&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;dxgi.dll!CreateDXGIFactory2&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;IDXGIFactory::CreateSwapChain&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;5&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;IDXGIFactory2::CreateSwapChainForHwnd&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;6&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;d3d12.dll!D3D12CreateDevice&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;7&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;d3d11.dll!D3D11CreateDevice&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;8&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;d3d11.dll!D3D11CreateDeviceAndSwapChain&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;9&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;vkQueuePresentKHR&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;10&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;vkCreateSwapchainKHR&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;根据调用栈落点判断来源：&lt;/p&gt;
 
 
 
@@ -164,174 +159,19 @@
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;证据点&lt;/th&gt;&lt;th&gt;结论&lt;/th&gt;&lt;th&gt;文件&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;NVIDIA Display registry&lt;/td&gt;&lt;td&gt;&lt;code&gt;nvlddmkm.sys&lt;/code&gt; 是 kernel miniport，&lt;code&gt;nvldumdx.dll&lt;/code&gt; 是 WDDM UMD，&lt;code&gt;nvoglv64.dll&lt;/code&gt; 是 OpenGL/Vulkan ICD&lt;/td&gt;&lt;td&gt;&lt;code&gt;graphics-stack/manifest/nvidia-registry.json&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;NVIDIA WDDM UMD exports&lt;/td&gt;&lt;td&gt;&lt;code&gt;nvldumdx.dll&lt;/code&gt; 导出 &lt;code&gt;OpenAdapter/OpenAdapter10/OpenAdapter10_2/OpenAdapter12&lt;/code&gt; 与 &lt;code&gt;NVAPI/NVENCODE/NVDEV&lt;/code&gt; thunk&lt;/td&gt;&lt;td&gt;&lt;code&gt;evidence/graphics-stack/nvldumdx.exports.json&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;NVIDIA D3D UMD exports&lt;/td&gt;&lt;td&gt;&lt;code&gt;nvd3dumx.dll&lt;/code&gt; 导出 &lt;code&gt;OpenAdapter&lt;/code&gt; / &lt;code&gt;QueryOglResource&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;evidence/graphics-stack/nvd3dumx.exports.json&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;NVIDIA kernel miniport PE&lt;/td&gt;&lt;td&gt;&lt;code&gt;nvlddmkm.sys&lt;/code&gt; 是 64-bit kernel image，含 &lt;code&gt;_DDTEXT&lt;/code&gt;、&lt;code&gt;_KTEXT&lt;/code&gt;、&lt;code&gt;PAGE_DD&lt;/code&gt;、&lt;code&gt;PAGE_K&lt;/code&gt; 等驱动分区&lt;/td&gt;&lt;td&gt;&lt;code&gt;evidence/graphics-stack/nvlddmkm.pe.summary.json&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;NVIDIA kernel miniport imports&lt;/td&gt;&lt;td&gt;&lt;code&gt;nvlddmkm.sys&lt;/code&gt; 依赖 HAL / ntoskrnl / WDF / dxgkrnl 等内核边界&lt;/td&gt;&lt;td&gt;&lt;code&gt;evidence/graphics-stack/nvlddmkm.imports.json&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;NVIDIA kernel behavior strings&lt;/td&gt;&lt;td&gt;&lt;code&gt;nvlddmkm.sys&lt;/code&gt; 暴露 WDDM、DxgKrnl、dxgmms2/VIDMM、HwQueue、DMA buffer、allocation、page fault、tile pool/comptag、PresentSync 等行为证据&lt;/td&gt;&lt;td&gt;&lt;code&gt;evidence/graphics-stack/nvlddmkm_sys.strings.focus.jsonl&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Vulkan ICD manifest&lt;/td&gt;&lt;td&gt;NVIDIA ICD 指向 &lt;code&gt;nvoglv64.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;graphics-stack/drivers/nv-vk64.json&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;NVIDIA present layer&lt;/td&gt;&lt;td&gt;&lt;code&gt;VK_LAYER_NV_present&lt;/code&gt; 指向 &lt;code&gt;nvoglv64.dll&lt;/code&gt;，入口为 &lt;code&gt;vk_gr2608GetInstanceProcAddr&lt;/code&gt; / &lt;code&gt;vk_gr2608GetDeviceProcAddr&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;graphics-stack/drivers/nv-vk64.json&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;NVIDIA ICD exports&lt;/td&gt;&lt;td&gt;&lt;code&gt;nvoglv64.dll&lt;/code&gt; 导出 ICD / Optimus / GR2608 Vulkan 入口&lt;/td&gt;&lt;td&gt;&lt;code&gt;evidence/graphics-stack/nvoglv64.exports.json&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;NVIDIA Vulkan ICD imports&lt;/td&gt;&lt;td&gt;&lt;code&gt;nvoglv64.dll&lt;/code&gt; 当前未静态导入 DXGI/D3D11/D3D12 创建入口，只看到 GDI/D3DKMT 侧适配器枚举&lt;/td&gt;&lt;td&gt;&lt;code&gt;evidence/graphics-stack/nvoglv64.imports.json&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;NVIDIA D3D UMD imports&lt;/td&gt;&lt;td&gt;&lt;code&gt;nvwgf2umx.dll&lt;/code&gt; 静态导入 &lt;code&gt;dxgi.dll!CreateDXGIFactory2&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;evidence/graphics-stack/nvwgf2umx.imports.json&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;NVIDIA D3D UMD IAT xref&lt;/td&gt;&lt;td&gt;&lt;code&gt;nvwgf2umx.dll&lt;/code&gt; 代码区存在 &lt;code&gt;CreateDXGIFactory2&lt;/code&gt; IAT 跳板&lt;/td&gt;&lt;td&gt;&lt;code&gt;evidence/graphics-stack/nvwgf2umx.dxgi_display.import_xrefs.json&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;DXGI exports&lt;/td&gt;&lt;td&gt;&lt;code&gt;dxgi.dll&lt;/code&gt; 导出 &lt;code&gt;CreateDXGIFactory&lt;/code&gt; / &lt;code&gt;CreateDXGIFactory1&lt;/code&gt; / &lt;code&gt;CreateDXGIFactory2&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;evidence/graphics-stack/dxgi.exports.json&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;D3D12 exports&lt;/td&gt;&lt;td&gt;&lt;code&gt;d3d12.dll&lt;/code&gt; 导出 &lt;code&gt;D3D12CreateDevice&lt;/code&gt; / &lt;code&gt;D3D12GetInterface&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;evidence/graphics-stack/d3d12.exports.json&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Steam Vulkan layer manifest&lt;/td&gt;&lt;td&gt;Steam overlay 是 Vulkan global layer&lt;/td&gt;&lt;td&gt;&lt;code&gt;graphics-stack/manifest/SteamOverlayVulkanLayer64.json&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Steam Vulkan layer exports&lt;/td&gt;&lt;td&gt;Steam overlay 导出 &lt;code&gt;vkCreateSwapchainKHR&lt;/code&gt; / &lt;code&gt;vkQueuePresentKHR&lt;/code&gt; / &lt;code&gt;vkCreateWin32SurfaceKHR&lt;/code&gt; 等 Vulkan hook 入口&lt;/td&gt;&lt;td&gt;&lt;code&gt;evidence/graphics-stack/SteamOverlayVulkanLayer64.exports.json&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Steam/GameOverlay imports&lt;/td&gt;&lt;td&gt;当前副本未静态导入 DXGI/D3D11/D3D12 创建入口&lt;/td&gt;&lt;td&gt;&lt;code&gt;evidence/graphics-stack/SteamOverlayVulkanLayer64.imports.json&lt;/code&gt;, &lt;code&gt;evidence/graphics-stack/GameOverlayRenderer64.imports.json&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;EOS layer manifest&lt;/td&gt;&lt;td&gt;EOS overlay 是 Vulkan global layer，并 hook &lt;code&gt;vkGetInstanceProcAddr&lt;/code&gt; / &lt;code&gt;vkGetDeviceProcAddr&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;graphics-stack/manifest/EOSOverlayVkLayer-Win64.json&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;EOS D3D11 imports&lt;/td&gt;&lt;td&gt;EOS overlay 静态导入 &lt;code&gt;D3D11CreateDevice&lt;/code&gt; / &lt;code&gt;D3D11CreateDeviceAndSwapChain&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;evidence/graphics-stack/EOSOVH-Win64-Shipping.imports.json&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;EOS D3D11 IAT xref&lt;/td&gt;&lt;td&gt;EOS overlay 代码区存在 D3D11 创建入口 IAT 跳板&lt;/td&gt;&lt;td&gt;&lt;code&gt;evidence/graphics-stack/EOSOVH-Win64-Shipping.d3d11.import_xrefs.json&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;OBS layer manifest&lt;/td&gt;&lt;td&gt;OBS 是 Vulkan global layer，入口 &lt;code&gt;OBS_Negotiate&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;graphics-stack/manifest/obs-vulkan64.json&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;OBS imports&lt;/td&gt;&lt;td&gt;当前副本未静态导入 DXGI/D3D11/D3D12 创建入口&lt;/td&gt;&lt;td&gt;&lt;code&gt;evidence/graphics-stack/graphics-hook64.imports.json&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;当前链路模型&lt;a href=&quot;#当前链路模型&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;section&gt;&lt;h3&gt;基础 Vulkan 路径&lt;a href=&quot;#基础-vulkan-路径&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;ol&gt;
-&lt;li&gt;游戏加载 &lt;code&gt;vulkan-1.dll&lt;/code&gt;。&lt;/li&gt;
-&lt;li&gt;Vulkan loader 读取 Khronos registry / manifest。&lt;/li&gt;
-&lt;li&gt;NVIDIA ICD manifest 指向 &lt;code&gt;nvoglv64.dll&lt;/code&gt;。&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;nvoglv64.dll&lt;/code&gt; 提供标准 ICD 入口：&lt;code&gt;vk_icdGetInstanceProcAddr&lt;/code&gt;、&lt;code&gt;vk_icdNegotiateLoaderICDInterfaceVersion&lt;/code&gt;。&lt;/li&gt;
-&lt;li&gt;同一个 &lt;code&gt;nvoglv64.dll&lt;/code&gt; 还提供 NVIDIA instance layers：&lt;code&gt;VK_LAYER_NV_optimus&lt;/code&gt;、&lt;code&gt;VK_LAYER_NV_present&lt;/code&gt;。&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;VK_LAYER_NV_present&lt;/code&gt; 的入口是 &lt;code&gt;vk_gr2608GetInstanceProcAddr&lt;/code&gt; / &lt;code&gt;vk_gr2608GetDeviceProcAddr&lt;/code&gt;。&lt;/li&gt;
-&lt;/ol&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;present / swapchain 可疑路径&lt;a href=&quot;#present--swapchain-可疑路径&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;ol&gt;
-&lt;li&gt;游戏侧发起 Vulkan WSI：Win32 surface、Vulkan swapchain、queue present。&lt;/li&gt;
-&lt;li&gt;Steam/EOS/OBS 这类 global layer 有机会先拦截 Vulkan 调用。&lt;/li&gt;
-&lt;li&gt;NVIDIA &lt;code&gt;VK_LAYER_NV_present&lt;/code&gt; / ICD 接管最终 WSI present。&lt;/li&gt;
-&lt;li&gt;Windows 下最终呈现必须进入 WDDM / DXGI / DWM 相关显示栈。&lt;/li&gt;
-&lt;li&gt;NVIDIA D3D UMD &lt;code&gt;nvwgf2umx.dll&lt;/code&gt; 已证明具备 &lt;code&gt;CreateDXGIFactory2&lt;/code&gt; 跳板。&lt;/li&gt;
-&lt;/ol&gt;&lt;p&gt;这条链解释了为什么“Vulkan 应用”可以在工具中表现出 DXGI/D3D12 swapchain 相关对象：Vulkan 是渲染 API，Windows 呈现层仍然可能落到 DXGI/WDDM/DWM 的对象模型里。&lt;/p&gt;&lt;/section&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;overlay 分流判断&lt;a href=&quot;#overlay-分流判断&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;模块&lt;/th&gt;&lt;th&gt;Vulkan present hook&lt;/th&gt;&lt;th&gt;DXGI/D3D 创建证据&lt;/th&gt;&lt;th&gt;判断&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;nvoglv64.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;有，ICD + &lt;code&gt;VK_LAYER_NV_present&lt;/code&gt;&lt;/td&gt;&lt;td&gt;未静态导入 DXGI/D3D 创建入口&lt;/td&gt;&lt;td&gt;高优先级怀疑对象，可能经驱动内部/系统接口进入 present 栈&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;nvwgf2umx.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;不是 Vulkan layer&lt;/td&gt;&lt;td&gt;有，&lt;code&gt;CreateDXGIFactory2&lt;/code&gt; 跳板&lt;/td&gt;&lt;td&gt;高价值底层证据，说明 NVIDIA D3D UMD 参与 DXGI factory 能力链&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;SteamOverlayVulkanLayer64.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;有，导出 &lt;code&gt;vkQueuePresentKHR&lt;/code&gt; / &lt;code&gt;vkCreateSwapchainKHR&lt;/code&gt;&lt;/td&gt;&lt;td&gt;当前无静态 DXGI/D3D 创建入口&lt;/td&gt;&lt;td&gt;可以改写 Vulkan present，不是当前 D3D12 swapchain 创建首要证据&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;GameOverlayRenderer64.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;有 &lt;code&gt;VulkanSteamOverlayPresent&lt;/code&gt;&lt;/td&gt;&lt;td&gt;当前无静态 DXGI/D3D 创建入口&lt;/td&gt;&lt;td&gt;Steam overlay 运行时呈现组件，但当前无 D3D12 创建证据&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;EOSOVH-Win64-Shipping.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;有，hook Vulkan proc addr&lt;/td&gt;&lt;td&gt;有，D3D11 设备/交换链入口跳板&lt;/td&gt;&lt;td&gt;能创建 D3D11 overlay swapchain；不是当前 D3D12 证据&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;graphics-hook64.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;有，OBS negotiate&lt;/td&gt;&lt;td&gt;当前无静态 DXGI/D3D 创建入口&lt;/td&gt;&lt;td&gt;capture/hook 层存在，但当前无 D3D12 创建证据&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;需要运行态证明的精确点&lt;a href=&quot;#需要运行态证明的精确点&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;要把“谁创建/持有 swapchain”从高可信推断变成铁证，需要记录这些入口的 caller module / call stack：&lt;/p&gt;&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;dxgi.dll!CreateDXGIFactory&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;dxgi.dll!CreateDXGIFactory1&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;dxgi.dll!CreateDXGIFactory2&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;IDXGIFactory::CreateSwapChain&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;IDXGIFactory2::CreateSwapChainForHwnd&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;IDXGIFactory2::CreateSwapChainForCoreWindow&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;d3d12.dll!D3D12CreateDevice&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;d3d11.dll!D3D11CreateDevice&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;d3d11.dll!D3D11CreateDeviceAndSwapChain&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;IDXGISwapChain::Present&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;IDXGISwapChain1::Present1&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;vkQueuePresentKHR&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;vkCreateSwapchainKHR&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;vkCreateWin32SurfaceKHR&lt;/code&gt;&lt;/li&gt;
-&lt;/ul&gt;&lt;p&gt;判定标准很简单：&lt;/p&gt;&lt;ul&gt;
-&lt;li&gt;caller stack 落在 &lt;code&gt;nvoglv64.dll&lt;/code&gt; / &lt;code&gt;nvwgf2umx.dll&lt;/code&gt;：NVIDIA WSI/driver present 路径。&lt;/li&gt;
-&lt;li&gt;caller stack 落在 &lt;code&gt;EOSOVH-Win64-Shipping.dll&lt;/code&gt;：EOS overlay。&lt;/li&gt;
-&lt;li&gt;caller stack 落在 &lt;code&gt;SteamOverlayVulkanLayer64.dll&lt;/code&gt; / &lt;code&gt;GameOverlayRenderer64.dll&lt;/code&gt;：Steam overlay。&lt;/li&gt;
-&lt;li&gt;caller stack 落在 &lt;code&gt;graphics-hook64.dll&lt;/code&gt;：OBS capture/hook。&lt;/li&gt;
-&lt;li&gt;caller stack 落在游戏主模块 / UnityPlayer / GameAssembly：游戏或引擎显式桥接。&lt;/li&gt;
-&lt;/ul&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;当前最终判断&lt;a href=&quot;#当前最终判断&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;离线证据最强的一条链是：&lt;/p&gt;&lt;p&gt;&lt;code&gt;vulkan-1.dll -&amp;gt; nv-vk64.json -&amp;gt; nvoglv64.dll ICD / VK_LAYER_NV_present -&amp;gt; Windows WSI present -&amp;gt; NVIDIA D3D UMD / DXGI factory capability&lt;/code&gt;&lt;/p&gt;&lt;p&gt;&lt;code&gt;nvwgf2umx.dll -&amp;gt; dxgi.dll!CreateDXGIFactory2&lt;/code&gt; 是目前最硬的 DXGI 工厂证据。&lt;/p&gt;&lt;p&gt;EOS 有 D3D11 swapchain 能力证据，但不是 D3D12 证据。&lt;/p&gt;&lt;p&gt;Steam/OBS 有 Vulkan present hook 证据，但当前没有静态 D3D12/DXGI 创建证据。&lt;/p&gt;&lt;/section&gt;</content:encoded></item><item><title>从 Vulkan ICD 到 WDDM Miniport：NVIDIA Windows 图形驱动行为链静态分析</title><link>https://zushinzackery2-ship-it.github.io/AAATest/posts/nvidia-windows-graphics-driver-behavior/</link><guid isPermaLink="true">https://zushinzackery2-ship-it.github.io/AAATest/posts/nvidia-windows-graphics-driver-behavior/</guid><description>本文基于 NVIDIA Windows 图形驱动样本，梳理 Vulkan、OpenGL、D3D、DXGI 与 WDDM 之间的模块职责、接口边界与证据强度。</description><pubDate>Sat, 06 Jun 2026 00:00:00 GMT</pubDate><content:encoded>&lt;section&gt;&lt;h2&gt;摘要&lt;a href=&quot;#摘要&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;本文基于一组 NVIDIA Windows 图形驱动样本，对其在 Vulkan、OpenGL、D3D、DXGI 与 WDDM 之间的模块职责和接口边界进行静态分析。分析对象包括 &lt;code&gt;nvoglv64.dll&lt;/code&gt;、&lt;code&gt;nvldumdx.dll&lt;/code&gt;、&lt;code&gt;nvd3dumx.dll&lt;/code&gt;、&lt;code&gt;nvwgf2umx.dll&lt;/code&gt;、&lt;code&gt;nvapi64.dll&lt;/code&gt; 与 &lt;code&gt;nvlddmkm.sys&lt;/code&gt;，证据来源包括驱动注册表信息、Vulkan ICD manifest、PE header、imports/exports、字符串证据、IAT 引用提取以及轻量运行态加载观测。&lt;/p&gt;&lt;p&gt;结论上，NVIDIA Windows 图形栈不是一条单线调用链，而是由多条用户态与内核态路径共同组成：&lt;code&gt;nvoglv64.dll&lt;/code&gt; 承担 OpenGL ICD、Vulkan ICD 与 NVIDIA Vulkan implicit layer；&lt;code&gt;nvldumdx.dll&lt;/code&gt;、&lt;code&gt;nvd3dumx.dll&lt;/code&gt;、&lt;code&gt;nvwgf2umx.dll&lt;/code&gt; 构成 D3D/WDDM 用户态驱动边界；&lt;code&gt;nvlddmkm.sys&lt;/code&gt; 则承担 WDDM kernel miniport 侧的 adapter、显存、队列、DMA、page fault、present sync 等内核行为域。&lt;/p&gt;&lt;p&gt;本文不声称完整复原 NVIDIA 闭源驱动内部算法，而是聚焦可验证的模块职责、加载路径、API 边界与证据强度。&lt;/p&gt;&lt;/section&gt;
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;调用栈落点&lt;/th&gt;&lt;th&gt;来源判断&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;nvoglv64.dll&lt;/code&gt; / &lt;code&gt;nvwgf2umx.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;NVIDIA 驱动 present 路径&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;EOSOVH-Win64-Shipping.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;EOS overlay&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;SteamOverlayVulkanLayer64.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;Steam overlay&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;graphics-hook64.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;OBS capture&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;UnityPlayer.dll&lt;/code&gt; / &lt;code&gt;GameAssembly.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;游戏/引擎显式桥接&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;八、给开发者的排查建议&lt;a href=&quot;#八给开发者的排查建议&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;遇到 Vulkan 游戏中出现 DXGI/D3D12 对象时，按以下顺序排查：&lt;/p&gt;&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;确认显卡厂商&lt;/strong&gt;：NVIDIA 驱动有 Present Layer，AMD/Intel 的架构可能不同&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;检查 overlay&lt;/strong&gt;：关闭 Steam、Epic、Discord 等 overlay 后是否仍出现&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;抓运行态调用栈&lt;/strong&gt;：在 &lt;code&gt;CreateDXGIFactory2&lt;/code&gt; 和 &lt;code&gt;D3D12CreateDevice&lt;/code&gt; 上断点，看 caller module&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;区分 D3D11 和 D3D12&lt;/strong&gt;：EOS 只能创建 D3D11，D3D12 对象更可能来自驱动路径&lt;/li&gt;
+&lt;/ol&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;九、总结&lt;a href=&quot;#九总结&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Vulkan 游戏中出现 DXGI/D3D12 对象，通常不是异常，而是 Windows 图形栈分层架构的正常表现：&lt;/p&gt;&lt;ul&gt;
+&lt;li&gt;Vulkan 是上层渲染 API&lt;/li&gt;
+&lt;li&gt;Windows 显示基础设施（WDDM/DXGI/DWM）是底层&lt;/li&gt;
+&lt;li&gt;NVIDIA 驱动在把 Vulkan present 翻译成 Windows 显示栈操作时，会创建或引用 DXGI 对象&lt;/li&gt;
+&lt;li&gt;Overlay 层（Steam、EOS、OBS）可能介入，但当前静态证据中，只有 NVIDIA 驱动路径具备明确的 DXGI 创建能力&lt;/li&gt;
+&lt;/ul&gt;&lt;p&gt;静态分析可以锁定最可能的来源，精确确认需要运行态调用栈。&lt;/p&gt;&lt;hr /&gt;&lt;p&gt;&lt;em&gt;分析环境：Windows x64，NVIDIA GeForce RTX 4060 Laptop GPU，驱动版本 32.0.15.8129。静态证据来自 PE 结构、imports/exports、IAT 引用提取。&lt;/em&gt;&lt;/p&gt;&lt;/section&gt;</content:encoded></item><item><title>从 Vulkan ICD 到 WDDM Miniport：NVIDIA Windows 图形驱动行为链静态分析</title><link>https://zushinzackery2-ship-it.github.io/AAATest/posts/nvidia-windows-graphics-driver-behavior/</link><guid isPermaLink="true">https://zushinzackery2-ship-it.github.io/AAATest/posts/nvidia-windows-graphics-driver-behavior/</guid><description>本文基于 NVIDIA Windows 图形驱动样本，梳理 Vulkan、OpenGL、D3D、DXGI 与 WDDM 之间的模块职责、接口边界与证据强度。</description><pubDate>Sat, 06 Jun 2026 00:00:00 GMT</pubDate><content:encoded>&lt;section&gt;&lt;h2&gt;摘要&lt;a href=&quot;#摘要&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;本文基于一组 NVIDIA Windows 图形驱动样本，对其在 Vulkan、OpenGL、D3D、DXGI 与 WDDM 之间的模块职责和接口边界进行静态分析。分析对象包括 &lt;code&gt;nvoglv64.dll&lt;/code&gt;、&lt;code&gt;nvldumdx.dll&lt;/code&gt;、&lt;code&gt;nvd3dumx.dll&lt;/code&gt;、&lt;code&gt;nvwgf2umx.dll&lt;/code&gt;、&lt;code&gt;nvapi64.dll&lt;/code&gt; 与 &lt;code&gt;nvlddmkm.sys&lt;/code&gt;，证据来源包括驱动注册表信息、Vulkan ICD manifest、PE header、imports/exports、字符串证据、IAT 引用提取以及轻量运行态加载观测。&lt;/p&gt;&lt;p&gt;结论上，NVIDIA Windows 图形栈不是一条单线调用链，而是由多条用户态与内核态路径共同组成：&lt;code&gt;nvoglv64.dll&lt;/code&gt; 承担 OpenGL ICD、Vulkan ICD 与 NVIDIA Vulkan implicit layer；&lt;code&gt;nvldumdx.dll&lt;/code&gt;、&lt;code&gt;nvd3dumx.dll&lt;/code&gt;、&lt;code&gt;nvwgf2umx.dll&lt;/code&gt; 构成 D3D/WDDM 用户态驱动边界；&lt;code&gt;nvlddmkm.sys&lt;/code&gt; 则承担 WDDM kernel miniport 侧的 adapter、显存、队列、DMA、page fault、present sync 等内核行为域。&lt;/p&gt;&lt;p&gt;本文不声称完整复原 NVIDIA 闭源驱动内部算法，而是聚焦可验证的模块职责、加载路径、API 边界与证据强度。&lt;/p&gt;&lt;/section&gt;
 &lt;section&gt;&lt;h2&gt;样本与环境&lt;a href=&quot;#样本与环境&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;本次样本来自一台 Windows x64 环境中的 NVIDIA 驱动安装目录。注册表信息显示当前显示设备为 &lt;code&gt;NVIDIA GeForce RTX 4060 Laptop GPU&lt;/code&gt;，驱动版本为 &lt;code&gt;32.0.15.8129&lt;/code&gt;，驱动日期为 &lt;code&gt;2025-09-05&lt;/code&gt;。&lt;/p&gt;&lt;p&gt;关键样本如下：&lt;/p&gt;
 
 
