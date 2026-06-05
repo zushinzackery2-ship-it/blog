@@ -1,4 +1,320 @@
-<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Shrei</title><description>Reverse engineering notes</description><link>https://zushinzackery2-ship-it.github.io/blog/</link><templateTheme>Firefly</templateTheme><templateThemeVersion>6.10.9</templateThemeVersion><templateThemeUrl>https://github.com/zushinzackery2-ship-it</templateThemeUrl><lastBuildDate>2026年6月5日 23:54:01</lastBuildDate><item><title>MCP 上下文优化：数据压缩与按需加载——字典索引文本格式</title><link>https://zushinzackery2-ship-it.github.io/blog/posts/07-mcp-context-optimization/</link><guid isPermaLink="true">https://zushinzackery2-ship-it.github.io/blog/posts/07-mcp-context-optimization/</guid><description>MCP 对话的上下文窗口有限，但工具返回的数据天然膨胀。优化不是少返回字段，而是重新设计数据表示和加载策略。</description><pubDate>Sun, 07 Jun 2026 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;&lt;p&gt;MCP 对话的上下文窗口有限，但工具返回的数据天然膨胀。优化不是”少返回点字段”，而是重新设计数据表示和加载策略：字段名字典化、数字索引替代长字符串、视觉符号表达结构、不同场景用不同”焦距”。&lt;/p&gt;&lt;/blockquote&gt;
+<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Shrei</title><description>Reverse engineering notes</description><link>https://zushinzackery2-ship-it.github.io/blog/</link><templateTheme>Firefly</templateTheme><templateThemeVersion>6.10.9</templateThemeVersion><templateThemeUrl>https://github.com/zushinzackery2-ship-it</templateThemeUrl><lastBuildDate>2026年6月6日 00:04:53</lastBuildDate><item><title>Unity IL2CPP 启动原理分析：引擎是如何&quot;唤醒&quot;你的 C# 代码的</title><link>https://zushinzackery2-ship-it.github.io/blog/posts/01-il2cpp-init-deep-dive/</link><guid isPermaLink="true">https://zushinzackery2-ship-it.github.io/blog/posts/01-il2cpp-init-deep-dive/</guid><description>双击运行 Unity 游戏时，引擎内部经历了一系列精密的握手过程，才能把 C# 代码真正运转起来。本文基于 Unity 2022.3.62 IL2CPP 产物的逆向分析，还原这个过程的全貌。</description><pubDate>Tue, 09 Jun 2026 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;&lt;p&gt;双击运行 Unity 游戏时，引擎内部经历了一系列精密的”握手”过程，才能把 C# 代码真正运转起来。本文基于对 Unity 2022.3.62 IL2CPP 产物的逆向分析，还原这个过程的全貌。&lt;/p&gt;&lt;/blockquote&gt;
+&lt;hr /&gt;
+&lt;section&gt;&lt;h2&gt;先说结论&lt;a href=&quot;#先说结论&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;UnityPlayer 不静态链接 IL2CPP，而是运行时动态加载 GameAssembly.dll，通过 &lt;code&gt;LoadDynamicLibrary + LookupSymbol&lt;/code&gt; 批量绑定 &lt;code&gt;il2cpp_*&lt;/code&gt; API。UnityPlayer 负责环境配置，GameAssembly 负责 VM 初始化。&lt;code&gt;global-metadata.dat&lt;/code&gt; 由 GameAssembly 的 MetadataLoader 定位并内存映射。&lt;code&gt;g_CodeRegistration&lt;/code&gt; 与 &lt;code&gt;g_MetadataRegistration&lt;/code&gt; 是 AOT 生成的 registration 结构头，是逆向定位的关键锚点。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;一、两个 DLL 的分工&lt;a href=&quot;#一两个-dll-的分工&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Unity IL2CPP 项目至少包含两个核心 DLL：&lt;/p&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;UnityPlayer.dll&lt;/strong&gt; —— 引擎的”大管家”，负责窗口、输入、渲染调度、音频等一切游戏基础设施&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;GameAssembly.dll&lt;/strong&gt; —— C# 代码的”翻译本”，里面存着所有 AOT 编译后的原生机器码，以及 IL2CPP 虚拟机本身&lt;/li&gt;
+&lt;/ul&gt;&lt;p&gt;关键的一点是：&lt;strong&gt;UnityPlayer 并不会在编译时就链接 GameAssembly&lt;/strong&gt;。相反，它选择在运行时动态加载。这有点像浏览器加载插件——先检查插件是否存在、版本对不对，确认无误后再建立通信通道。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;二、启动的七步曲&lt;a href=&quot;#二启动的七步曲&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;整个启动流程可以概括为七个阶段：&lt;/p&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;① 进程启动 → Windows 把 UnityPlayer.dll 加载进内存&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;② 引擎入口 → UnityMain 被调用&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;③ 决定用 IL2CPP → LoadScriptingRuntime 选择 IL2CPP 分支&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;④ 加载&quot;翻译本&quot; → LoadIl2Cpp 加载 GameAssembly.dll&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;5&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;⑤ 配置环境 → 告诉 GameAssembly 数据在哪、内存怎么用&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;6&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;⑥ 启动虚拟机 → 调用 il2cpp_init&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;7&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;⑦ 世界就绪 → C# 代码可以运行了&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;下面逐层展开。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;三、UnityPlayer 的准备工作&lt;a href=&quot;#三unityplayer-的准备工作&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;section&gt;&lt;h3&gt;3.1 找到并加载 GameAssembly&lt;a href=&quot;#31-找到并加载-gameassembly&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;一切从 &lt;code&gt;LoadScriptingRuntime&lt;/code&gt; 开始。这个函数做三件事：&lt;/p&gt;&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;拼出 GameAssembly.dll 的完整路径&lt;/strong&gt; —— 通常就在游戏 exe 同级目录&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;调用 LoadIl2Cpp 加载它&lt;/strong&gt; —— 不是简单的 &lt;code&gt;LoadLibrary&lt;/code&gt;，还要做”体检”&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;构造 il2cpp_data 目录路径&lt;/strong&gt; —— 这是 IL2CPP 的数据仓库&lt;/li&gt;
+&lt;/ol&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;3.2 LoadIl2Cpp：不只是加载，还要”验货”&lt;a href=&quot;#32-loadil2cpp不只是加载还要验货&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;code&gt;LoadIl2Cpp&lt;/code&gt; 的核心逻辑像一份入职 checklist：&lt;/p&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;加载 GameAssembly.dll&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;逐个检查关键函数是否存在&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;il2cpp_init          ✓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;5&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;il2cpp_set_data_dir  ✓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;6&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;il2cpp_class_*       ✓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;7&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;il2cpp_gc_*          ✓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;8&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;...&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;9&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;10&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;发现某个函数缺失？&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;11&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;→ 打印 &quot;il2cpp: function xxx not found&quot;&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;12&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;→ 卸载 DLL，标记失败&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;13&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;14&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;全部通过？&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;15&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;→ 保存所有函数指针，准备使用&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;span&gt;展开&lt;/span&gt;&lt;span&gt;收起&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;p&gt;UnityPlayer 会绑定上百个 &lt;code&gt;il2cpp_*&lt;/code&gt; 函数，覆盖以下方面：&lt;/p&gt;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;功能&lt;/th&gt;&lt;th&gt;例子&lt;/th&gt;&lt;th&gt;用途&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;启停虚拟机&lt;/td&gt;&lt;td&gt;&lt;code&gt;il2cpp_init&lt;/code&gt; / &lt;code&gt;il2cpp_shutdown&lt;/code&gt;&lt;/td&gt;&lt;td&gt;开关 IL2CPP 运行时&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;目录配置&lt;/td&gt;&lt;td&gt;&lt;code&gt;il2cpp_set_data_dir&lt;/code&gt;&lt;/td&gt;&lt;td&gt;告诉 GA 数据文件在哪&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;内存管理&lt;/td&gt;&lt;td&gt;&lt;code&gt;il2cpp_set_memory_callbacks&lt;/code&gt;&lt;/td&gt;&lt;td&gt;Unity 用自己的分配器接管&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;类型查询&lt;/td&gt;&lt;td&gt;&lt;code&gt;il2cpp_class_from_name&lt;/code&gt;&lt;/td&gt;&lt;td&gt;运行时查找 C# 类&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;GC 控制&lt;/td&gt;&lt;td&gt;&lt;code&gt;il2cpp_gc_collect&lt;/code&gt;&lt;/td&gt;&lt;td&gt;触发垃圾回收&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;异常处理&lt;/td&gt;&lt;td&gt;&lt;code&gt;il2cpp_raise_exception&lt;/code&gt;&lt;/td&gt;&lt;td&gt;抛出异常&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;p&gt;&lt;strong&gt;核心设计&lt;/strong&gt;：UnityPlayer 与 GameAssembly 之间不是传统的 import table 依赖，而是运行时动态绑定。这让 Unity 可以在不同后端（Mono / IL2CPP）之间灵活切换。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;3.3 配置环境参数&lt;a href=&quot;#33-配置环境参数&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;加载成功后，&lt;code&gt;InitializeIl2CppFromMain&lt;/code&gt; 开始”布置房间”：&lt;/p&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;1. 安装 Unity 的内存分配器（让 IL2CPP 用 Unity 的内存池）&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;2. 调整 IL2CPP 内存池大小&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;3. 传入命令行参数&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;4. 传入 config 目录路径&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;5&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;5. 传入 data 目录路径（就是前面拼的 il2cpp_data）&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;6&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;6. 传入调试器参数&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;7&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;7. 最后，调用 il2cpp_init(&quot;IL2CPP Root Domain&quot;)&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;第 5 步传入的 &lt;code&gt;dataDir&lt;/code&gt; 非常关键 —— 后面 GameAssembly 会用它来找 &lt;code&gt;global-metadata.dat&lt;/code&gt; 文件。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;3.4 失败处理&lt;a href=&quot;#34-失败处理&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;如果加载失败，玩家会看到：&lt;/p&gt;&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;&quot;Failed to load il2cpp&quot;&lt;/code&gt; —— DLL 本身加载失败&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;&quot;Failed to initialize IL2CPP&quot;&lt;/code&gt; —— 加载成功但初始化失败&lt;/li&gt;
+&lt;/ul&gt;&lt;p&gt;如果某个关键函数缺失，控制台还会打印具体的名字，方便开发者排查。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;四、GameAssembly 内部的”开机自检”&lt;a href=&quot;#四gameassembly-内部的开机自检&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;section&gt;&lt;h3&gt;4.1 il2cpp_init：一扇旋转门&lt;a href=&quot;#41-il2cpp_init一扇旋转门&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;GameAssembly 导出的 &lt;code&gt;il2cpp_init&lt;/code&gt; 非常薄，只做两件事：&lt;/p&gt;&lt;ol&gt;
+&lt;li&gt;设置 locale（本地化）&lt;/li&gt;
+&lt;li&gt;调用 &lt;code&gt;Runtime::Init&lt;/code&gt; —— 真正的”开机自检”在这里&lt;/li&gt;
+&lt;/ol&gt;&lt;p&gt;无论 UnityPlayer 传 UTF-8 还是 UTF-16 的域名，最终都走同一个入口。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;4.2 Runtime::Init：按顺序点亮各个子系统&lt;a href=&quot;#42-runtimeinit按顺序点亮各个子系统&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;code&gt;Runtime::Init&lt;/code&gt; 是 IL2CPP VM 的心脏，长约 4400 字节。它按严格的顺序初始化各个子系统：&lt;/p&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;Runtime::Init(&quot;IL2CPP Root Domain&quot;)&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;│&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ① 平台层 ── os::Initialize（Windows API 封装）&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ② 本地化 ── os::Locale::Initialize&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;5&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ③ 元数据分配器 ── MetadataAllocInitialize&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;6&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ④ 原生镜像 ── os::Image::Initialize&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;7&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ⑤ 线程层 ── os::Thread::Init&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;8&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ⑥ 同步上下文 ── SynchronizationContext::Initialize&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;9&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;│&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;10&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ⑦ 元数据缓存 ── MetadataCache::Initialize  ★ 核心&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;11&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;│     ├─ GlobalMetadata::Initialize&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;12&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;│     │   ├─ 找 global-metadata.dat&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;13&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;│     │   ├─ 内存映射文件&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;14&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;│     │   └─ 分配运行期工作表&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;15&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;│     ├─ 注册泛型配置&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;16&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;│     └─ 构建 Image / Assembly / Class 索引&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;17&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;│&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;18&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ⑧ 垃圾回收 ── GC::Initialize&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;19&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ⑨ VM 线程 ── Thread::Initialize&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;20&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ⑩ 加载基础程序集 ── Assembly::Load（如 mscorlib）&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;21&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ⑪ 初始化基础类型 ── Class::FromName / Class::Init&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;22&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ⑫ GC 终结器 ── GC::InitializeFinalizer&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;23&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;└─ ⑬ 收尾 ── MetadataCache::InitializeGCSafe&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;span&gt;展开&lt;/span&gt;&lt;span&gt;收起&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;p&gt;这个顺序不是随意的。比如必须先初始化元数据分配器，才能分配元数据缓存；必须先加载基础程序集，才能初始化基础类型。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;4.3 从”静态数据”到”活的世界”&lt;a href=&quot;#43-从静态数据到活的世界&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;初始化过程中，GameAssembly 内部发生了一个重要转变：&lt;/p&gt;&lt;p&gt;&lt;strong&gt;初始化前：&lt;/strong&gt;&lt;/p&gt;&lt;ul&gt;
+&lt;li&gt;GameAssembly 只是一块刚加载进内存的 PE 文件&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;global-metadata.dat&lt;/code&gt; 还躺在硬盘上&lt;/li&gt;
+&lt;li&gt;各种 registration 表只是二进制数据，没有”生命”&lt;/li&gt;
+&lt;/ul&gt;&lt;p&gt;&lt;strong&gt;初始化后：&lt;/strong&gt;&lt;/p&gt;&lt;ul&gt;
+&lt;li&gt;MetadataLoader 把 &lt;code&gt;global-metadata.dat&lt;/code&gt; 映射进内存&lt;/li&gt;
+&lt;li&gt;Registration 表被 runtime”消化”成可查询的索引&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Il2CppImage&lt;/code&gt;、&lt;code&gt;Il2CppAssembly&lt;/code&gt;、&lt;code&gt;Il2CppClass&lt;/code&gt; 等结构被构建出来&lt;/li&gt;
+&lt;li&gt;GC 堆准备好了，线程系统就绪了&lt;/li&gt;
+&lt;li&gt;UnityPlayer 可以通过 &lt;code&gt;il2cpp_*&lt;/code&gt; API 创建和操作 C# 对象&lt;/li&gt;
+&lt;/ul&gt;&lt;hr /&gt;&lt;/section&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;五、Metadata 文件：C# 世界的”地图”&lt;a href=&quot;#五metadata-文件c-世界的地图&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;section&gt;&lt;h3&gt;5.1 它从哪来&lt;a href=&quot;#51-它从哪来&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;code&gt;global-metadata.dat&lt;/code&gt; 是 Unity 在 AOT 编译阶段生成的元数据文件，相当于 C# 世界的”地图”——里面记录了所有类、方法、字段、属性、泛型信息的位置和关系。&lt;/p&gt;&lt;p&gt;它的加载路径是：&lt;/p&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;UnityPlayer 拼出 il2cpp_data 路径&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;传给 GameAssembly（il2cpp_set_data_dir）&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;5&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;GameAssembly 的 Runtime::GetDataDir() 读取&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;6&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;7&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;MetadataLoader 拼接：dataDir + &quot;Metadata/global-metadata.dat&quot;&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;8&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;9&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;File::Open 打开文件&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;10&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;11&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;MemoryMappedFile::Map 映射到内存&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;注意：&lt;strong&gt;UnityPlayer 只负责告诉 GameAssembly 数据目录在哪，从不直接碰这个文件。&lt;/strong&gt; 这是清晰的职责分离。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;5.2 Registration 表：编译期埋下的”路标”&lt;a href=&quot;#52-registration-表编译期埋下的路标&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;除了 metadata 文件，GameAssembly 里还有两组编译期生成的 registration 表：&lt;/p&gt;&lt;p&gt;&lt;strong&gt;&lt;code&gt;g_CodeRegistration&lt;/code&gt;&lt;/strong&gt; —— 描述 native code 入口：&lt;/p&gt;&lt;ul&gt;
+&lt;li&gt;泛型方法指针（54,162 个）&lt;/li&gt;
+&lt;li&gt;Invoker 入口（12,947 个）&lt;/li&gt;
+&lt;li&gt;未解析虚调用入口（2,039 个）&lt;/li&gt;
+&lt;li&gt;互操作数据（470 项）&lt;/li&gt;
+&lt;li&gt;Codegen 模块（60 个）&lt;/li&gt;
+&lt;/ul&gt;&lt;p&gt;&lt;strong&gt;&lt;code&gt;g_MetadataRegistration&lt;/code&gt;&lt;/strong&gt; —— 描述 metadata 索引：&lt;/p&gt;&lt;ul&gt;
+&lt;li&gt;泛型类（5,894 个）&lt;/li&gt;
+&lt;li&gt;泛型实例（3,665 个）&lt;/li&gt;
+&lt;li&gt;类型（19,553 个）&lt;/li&gt;
+&lt;li&gt;方法规格（63,374 个）&lt;/li&gt;
+&lt;li&gt;字段偏移（6,196 组）&lt;/li&gt;
+&lt;/ul&gt;&lt;p&gt;这些表不是源码统计，而是 AOT 编译器在生成 GameAssembly 时”埋下的路标”。Runtime 初始化时把它们和 metadata 文件结合起来，才能构建出完整的 C# 运行世界。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;5.3 Registration 的注册过程&lt;a href=&quot;#53-registration-的注册过程&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;s_Il2CppCodegenRegistration（编译期生成的入口函数）&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;→ 调用 il2cpp_codegen_register（只有 5 字节的跳板）&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;→ MetadataCache::Register&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;→ GlobalMetadata::Register&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;这个过程把静态的 registration 数据”激活”成 runtime 可用的索引结构。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;六、一张图看懂职责边界&lt;a href=&quot;#六一张图看懂职责边界&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;工作&lt;/th&gt;&lt;th&gt;UnityPlayer&lt;/th&gt;&lt;th&gt;GameAssembly&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;找到对方&lt;/td&gt;&lt;td&gt;✅ 拼路径、加载 DLL&lt;/td&gt;&lt;td&gt;❌ 被动等待&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;建立通信&lt;/td&gt;&lt;td&gt;✅ 动态绑定所有 API&lt;/td&gt;&lt;td&gt;提供导出函数&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;告诉数据在哪&lt;/td&gt;&lt;td&gt;✅ 传 dataDir&lt;/td&gt;&lt;td&gt;保存并使用&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;读取 metadata 文件&lt;/td&gt;&lt;td&gt;❌ 不碰&lt;/td&gt;&lt;td&gt;✅ MetadataLoader 负责&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;构建类型/方法索引&lt;/td&gt;&lt;td&gt;❌ 不做&lt;/td&gt;&lt;td&gt;✅ 核心工作&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;注册 AOT 代码&lt;/td&gt;&lt;td&gt;❌ 不做&lt;/td&gt;&lt;td&gt;✅ 核心工作&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;提供查询接口&lt;/td&gt;&lt;td&gt;调用方&lt;/td&gt;&lt;td&gt;✅ 实现方&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;p&gt;&lt;strong&gt;一句话总结&lt;/strong&gt;：UnityPlayer 是”甲方”，负责提需求和配环境；GameAssembly 是”乙方”，负责实现 IL2CPP 虚拟机的全部内部工作。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;七、对逆向/安全工作的价值&lt;a href=&quot;#七对逆向安全工作的价值&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;理解这个启动流程后，以下工作会变得更清晰：&lt;/p&gt;&lt;p&gt;&lt;strong&gt;定位关键函数&lt;/strong&gt;：&lt;/p&gt;&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;il2cpp_init&lt;/code&gt; (&lt;code&gt;0x226270&lt;/code&gt;) —— VM 入口&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Runtime::Init&lt;/code&gt; (&lt;code&gt;0x2046c0&lt;/code&gt;) —— 主初始化&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;MetadataCache::Initialize&lt;/code&gt; (&lt;code&gt;0x1a0070&lt;/code&gt;) —— 元数据缓存初始化&lt;/li&gt;
+&lt;/ul&gt;&lt;p&gt;&lt;strong&gt;定位关键数据&lt;/strong&gt;：&lt;/p&gt;&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;g_CodeRegistration&lt;/code&gt; (&lt;code&gt;0x12773d0&lt;/code&gt;) —— native code 入口表&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;g_MetadataRegistration&lt;/code&gt; (&lt;code&gt;0x14e8cb0&lt;/code&gt;) —— metadata 索引表&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;g_CodeGenModules&lt;/code&gt; (&lt;code&gt;0x1738340&lt;/code&gt;) —— 代码生成模块数组&lt;/li&gt;
+&lt;/ul&gt;&lt;p&gt;&lt;strong&gt;Hook 时机选择&lt;/strong&gt;：&lt;/p&gt;&lt;ul&gt;
+&lt;li&gt;在 &lt;code&gt;il2cpp_init&lt;/code&gt; 之前 Hook：只能改 UnityPlayer 的行为&lt;/li&gt;
+&lt;li&gt;在 &lt;code&gt;Runtime::Init&lt;/code&gt; 之后 Hook：可以操作完整的 IL2CPP 运行时&lt;/li&gt;
+&lt;li&gt;在 &lt;code&gt;MetadataCache::Initialize&lt;/code&gt; 之后 Hook：metadata 索引已构建，可以查询类型和方法&lt;/li&gt;
+&lt;/ul&gt;&lt;hr /&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;八、总结&lt;a href=&quot;#八总结&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Unity IL2CPP 的启动不是简单的”加载 DLL → 跑代码”，而是一个精心设计的分层握手过程：&lt;/p&gt;&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;UnityPlayer 动态加载 GameAssembly&lt;/strong&gt;，通过运行时符号绑定建立通信&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;UnityPlayer 配置环境&lt;/strong&gt;：内存、目录、命令行、调试器参数&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;GameAssembly 初始化 VM&lt;/strong&gt;：按顺序点亮 OS、locale、metadata、GC、线程等子系统&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;MetadataLoader 映射 global-metadata.dat&lt;/strong&gt;，把”地图”读进内存&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Registration 表被激活&lt;/strong&gt;，编译期埋下的”路标”变成运行时可查询的索引&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;托管世界就绪&lt;/strong&gt;，C# 代码可以运行了&lt;/li&gt;
+&lt;/ol&gt;&lt;p&gt;这个设计让 Unity 保持了引擎与脚本后端的解耦，同时也为逆向分析提供了清晰的切入点。&lt;/p&gt;&lt;hr /&gt;&lt;p&gt;&lt;em&gt;分析样本：Unity 2022.3.62f2c1，Windows x64。文中地址基于 PE 镜像基址 &lt;code&gt;0x180000000&lt;/code&gt;。&lt;/em&gt;&lt;/p&gt;&lt;/section&gt;</content:encoded></item><item><title>读懂 IL2CPP 的&quot;户口本&quot;：一张表看穿你的 Unity 项目有多大</title><link>https://zushinzackery2-ship-it.github.io/blog/posts/02-il2cpp-registration-counts/</link><guid isPermaLink="true">https://zushinzackery2-ship-it.github.io/blog/posts/02-il2cpp-registration-counts/</guid><description>每个 IL2CPP 构建的 Unity 游戏，都在 GameAssembly.dll 里藏了一份记录 runtime 索引规模的表。本文教你读懂这份户口本，用真实数据量化项目复杂度。</description><pubDate>Mon, 08 Jun 2026 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;&lt;p&gt;每个 IL2CPP 构建的 Unity 游戏，都在 GameAssembly.dll 里藏了一份”户口本”——记录着泛型、类型、方法等 runtime 索引的规模。本文教你读懂这份”户口本”，用真实数据量化一个 IL2CPP 项目的复杂度。&lt;/p&gt;&lt;/blockquote&gt;
+&lt;hr /&gt;
+&lt;section&gt;&lt;h2&gt;先说结论&lt;a href=&quot;#先说结论&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;当前样本的 IL2CPP registration 计数：泛型方法指针 54,162 个、方法规格 63,374 个、类型登记 19,553 个、调用入口 12,947 个、类型布局 6,196 组、代码模块 60 个。这些数字描述的是 AOT 编译后的 runtime 索引规模，不是源码层的类/方法数量。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;一、什么是 Registration 表&lt;a href=&quot;#一什么是-registration-表&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;使用 Unity 的 IL2CPP 后端构建项目时，编译器会做两件事：&lt;/p&gt;&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;把你的 C# 代码翻译成 C++，再编译成机器码&lt;/strong&gt; —— 这些代码存在 GameAssembly.dll 里&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;生成一份”索引目录”&lt;/strong&gt; —— 记录所有类型、方法、泛型实例的位置和关系，也存在 GameAssembly.dll 里&lt;/li&gt;
+&lt;/ol&gt;&lt;p&gt;这份”索引目录”就是 &lt;strong&gt;Registration 表&lt;/strong&gt;。它有两张：&lt;/p&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;g_CodeRegistration&lt;/code&gt;&lt;/strong&gt; —— “代码入口表”，记录各种 native 代码入口的地址&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;g_MetadataRegistration&lt;/code&gt;&lt;/strong&gt; —— “元数据索引表”，记录类型、泛型、方法规格等索引&lt;/li&gt;
+&lt;/ul&gt;&lt;p&gt;它们不是源码统计，而是 AOT 编译器在生成 GameAssembly 时写死的二进制数据。通过解析它们，我们可以量化一个项目的 runtime 规模。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;二、如何读取：Count/Pointer 成对布局&lt;a href=&quot;#二如何读取countpointer-成对布局&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Registration 表采用一种简单的重复模式：&lt;/p&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;数量&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;指向数组的指针&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;数量&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;指向数组的指针&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;5&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;...&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;就像这样：&lt;/p&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;g_MetadataRegistration 的前 16 字节：&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;0x00 = 5894     ← 有 5894 个泛型类记录&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;0x08 = 0x1812d03a0  ← 这些记录从这个地址开始&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;理解了这个模式，下面的数据就都能读懂了。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;三、g_CodeRegistration：代码入口”花名册”&lt;a href=&quot;#三g_coderegistration代码入口花名册&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;这张表告诉我们：GameAssembly 里有多少种不同的”代码入口”。&lt;/p&gt;&lt;section&gt;&lt;h3&gt;总览&lt;a href=&quot;#总览&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;项目&lt;/th&gt;&lt;th&gt;数量&lt;/th&gt;&lt;th&gt;通俗解释&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;Reverse P/Invoke wrappers&lt;/td&gt;&lt;td&gt;&lt;strong&gt;3&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;Native 回调 C# 的”翻译官”&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Generic method pointers&lt;/td&gt;&lt;td&gt;&lt;strong&gt;54,162&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;泛型方法的实际代码入口&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Invoker pointers&lt;/td&gt;&lt;td&gt;&lt;strong&gt;12,947&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;Runtime 统一调用的”中转站”&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Unresolved virtual calls&lt;/td&gt;&lt;td&gt;&lt;strong&gt;2,039&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;运行时才能确定目标的虚调用&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Interop data&lt;/td&gt;&lt;td&gt;&lt;strong&gt;470&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;与 Native/COM 互操作的数据&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Codegen modules&lt;/td&gt;&lt;td&gt;&lt;strong&gt;60&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;代码被分成了 60 个模块&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;逐项解读&lt;a href=&quot;#逐项解读&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;section&gt;&lt;h4&gt;Reverse P/Invoke Wrappers（3 个）&lt;a href=&quot;#reverse-pinvoke-wrappers3-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;当 Native 代码需要回调 C# 代码时（比如 Windows API 的回调函数），IL2CPP 需要一层”翻译”来把调用约定、参数布局转换好。这个样本只有 3 个 wrapper，说明这类场景很少。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Generic Method Pointers（54,162 个）&lt;a href=&quot;#generic-method-pointers54162-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;这是最大的一类。你的 C# 代码里写了 &lt;code&gt;List&amp;lt;T&amp;gt;&lt;/code&gt;、&lt;code&gt;Dictionary&amp;lt;K,V&amp;gt;&lt;/code&gt; 这样的泛型，IL2CPP 在 AOT 阶段会把它们实例化成具体的类型（如 &lt;code&gt;List&amp;lt;int&amp;gt;&lt;/code&gt;、&lt;code&gt;List&amp;lt;string&amp;gt;&lt;/code&gt;），每个实例对应一个 native 代码入口。&lt;/p&gt;&lt;p&gt;&lt;strong&gt;54,162 不是说你写了 5 万多个泛型方法&lt;/strong&gt;，而是说 AOT 展开后产生了 5 万多个具体的代码入口。这反映了项目的泛型使用程度。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Invoker Pointers（12,947 个）&lt;a href=&quot;#invoker-pointers12947-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;Invoker 是 IL2CPP runtime 的”统一呼叫台”。通过反射调用方法、或 runtime 需要做动态分发时，会通过 invoker 来调用目标方法。&lt;/p&gt;&lt;p&gt;12,947 个 invoker 说明 runtime 有一万多个可调度的”中转入口”。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Unresolved Virtual Calls（2,039 个）&lt;a href=&quot;#unresolved-virtual-calls2039-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;AOT 编译时，有些虚调用、接口调用的目标在编译期无法确定（比如泛型虚方法）。IL2CPP 会保留这些”待解析”的入口，在运行时通过 vtable 或其他机制找到真正的目标。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Interop Data（470 项）&lt;a href=&quot;#interop-data470-项&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;与 Native 代码、COM、WinRT、P/Invoke 互操作相关的数据。470 项说明这个项目有一定的 native 互操作，但不算特别重。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Codegen Modules（60 个）&lt;a href=&quot;#codegen-modules60-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;IL2CPP 把生成的代码按模块拆分，每个模块通常对应一个程序集或代码单元。60 个模块说明项目有一定规模，代码被组织在多个程序集中。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;&lt;/section&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;四、g_MetadataRegistration：元数据”档案库”&lt;a href=&quot;#四g_metadataregistration元数据档案库&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;如果说 CodeRegistration 是”花名册”，MetadataRegistration 就是”档案库”——记录类型、泛型、方法规格等 metadata 索引。&lt;/p&gt;&lt;section&gt;&lt;h3&gt;总览&lt;a href=&quot;#总览-1&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;项目&lt;/th&gt;&lt;th&gt;数量&lt;/th&gt;&lt;th&gt;通俗解释&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;Generic classes&lt;/td&gt;&lt;td&gt;&lt;strong&gt;5,894&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;泛型类的具体实例登记&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Generic instances&lt;/td&gt;&lt;td&gt;&lt;strong&gt;3,665&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;泛型参数的不同组合&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Generic method table&lt;/td&gt;&lt;td&gt;&lt;strong&gt;54,304&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;泛型方法的登记关系&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Types&lt;/td&gt;&lt;td&gt;&lt;strong&gt;19,553&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;所有类型的登记项&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Method specs&lt;/td&gt;&lt;td&gt;&lt;strong&gt;63,374&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;方法泛型规格&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Field offsets&lt;/td&gt;&lt;td&gt;&lt;strong&gt;6,196&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;字段在内存中的偏移量&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Type definition sizes&lt;/td&gt;&lt;td&gt;&lt;strong&gt;6,196&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;类型在内存中的大小&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Metadata usages&lt;/td&gt;&lt;td&gt;&lt;strong&gt;0&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;当前为空&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;逐项解读&lt;a href=&quot;#逐项解读-1&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;section&gt;&lt;h4&gt;Generic Classes（5,894 个）&lt;a href=&quot;#generic-classes5894-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;不是说你写了 5,894 个泛型类，而是说 AOT 展开后产生了 5,894 个具体的泛型类实例（如 &lt;code&gt;List&amp;lt;int&amp;gt;&lt;/code&gt;、&lt;code&gt;Dictionary&amp;lt;string, object&amp;gt;&lt;/code&gt; 等）。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Generic Instances（3,665 个）&lt;a href=&quot;#generic-instances3665-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;泛型参数的不同组合。比如 &lt;code&gt;List&amp;lt;int&amp;gt;&lt;/code&gt; 和 &lt;code&gt;List&amp;lt;string&amp;gt;&lt;/code&gt; 是两个不同的 generic instance。3,665 个组合说明泛型参数的使用比较多样。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Generic Method Table（54,304 个）&lt;a href=&quot;#generic-method-table54304-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;与 CodeRegistration 里的 generic method pointers（54,162 个）数量接近，但含义不同：&lt;/p&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Generic method table&lt;/strong&gt; = “档案”，记录泛型方法的关系和元数据&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Generic method pointers&lt;/strong&gt; = “门牌号”，指向实际的 native 代码&lt;/li&gt;
+&lt;/ul&gt;&lt;p&gt;两者数量接近说明”档案”和”门牌号”基本一一对应，但略有差异（54,304 vs 54,162），因为有些档案条目可能没有对应的代码（比如纯抽象方法）。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Types（19,553 个）&lt;a href=&quot;#types19553-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;包括基础类型（int、string）、数组、泛型实例、修饰类型（ref、指针）等。&lt;strong&gt;不是”19,553 个类”&lt;/strong&gt;，而是 19,553 个类型登记项。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Method Specs（63,374 个）&lt;a href=&quot;#method-specs63374-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;这是整张表中最大的数字。Method spec 描述方法的泛型规格——比如 &lt;code&gt;void Foo&amp;lt;T&amp;gt;()&lt;/code&gt; 在不同 &lt;code&gt;T&lt;/code&gt; 下的规格。&lt;/p&gt;&lt;p&gt;它比 generic method table（54,304）和 generic method pointers（54,162）都大，说明”规格记录”比最终的”代码入口”更多。这很正常：一个泛型方法模板可能对应多个规格，但只有部分规格会生成实际代码。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Field Offsets &amp;amp; Type Definition Sizes（各 6,196 个）&lt;a href=&quot;#field-offsets--type-definition-sizes各-6196-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;这两个数字完全相等，说明为同一批类型定义记录了：&lt;/p&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;字段偏移&lt;/strong&gt; —— 每个字段在对象内存中的位置&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;类型大小&lt;/strong&gt; —— 整个类型占多少字节&lt;/li&gt;
+&lt;/ul&gt;&lt;p&gt;6,196 组记录反映了项目的类型定义规模。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Metadata Usages（0）&lt;a href=&quot;#metadata-usages0&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;当前样本中这个字段为空。这只能说明 generated registration 里没填这个数，不代表项目没有 metadata 使用。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;&lt;/section&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;五、两张表放在一起看&lt;a href=&quot;#五两张表放在一起看&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;把 CodeRegistration 和 MetadataRegistration 的数据合并，可以得到项目的完整规模画像：&lt;/p&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;┌─────────────────────────────────────────────┐&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│           项目规模总览                        │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;├─────────────────────────────────────────────┤&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  泛型方法代码入口      54,162                │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;5&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  泛型方法档案          54,304                │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;6&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  方法规格              63,374  ← 最大        │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;7&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  类型登记              19,553                │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;8&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  泛型类实例            5,894                 │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;9&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  泛型参数组合          3,665                 │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;10&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  统一调用入口          12,947                │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;11&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  类型布局记录          6,196                 │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;12&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  未解析虚调用          2,039                 │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;13&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  互操作数据            470                   │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;14&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  代码模块              60                    │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;15&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  Native回调翻译官      3                     │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;16&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;└─────────────────────────────────────────────┘&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;span&gt;展开&lt;/span&gt;&lt;span&gt;收起&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;section&gt;&lt;h3&gt;这些数字告诉我们什么&lt;a href=&quot;#这些数字告诉我们什么&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;strong&gt;1. 泛型使用程度较高&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;泛型相关表（generic method pointers、generic method table、method specs）都在五万到六万级别，说明项目大量使用了泛型。这在现代 C# 项目中很常见——&lt;code&gt;List&amp;lt;T&amp;gt;&lt;/code&gt;、&lt;code&gt;Dictionary&amp;lt;K,V&amp;gt;&lt;/code&gt;、&lt;code&gt;Task&amp;lt;T&amp;gt;&lt;/code&gt;、&lt;code&gt;IEnumerable&amp;lt;T&amp;gt;&lt;/code&gt; 等无处不在。&lt;/p&gt;&lt;p&gt;&lt;strong&gt;2. 类型系统复杂度中等偏上&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;19,553 个类型登记项、6,196 组类型布局记录，说明项目有一定规模，但不是超大型（超大型项目类型登记项可能达到数十万）。&lt;/p&gt;&lt;p&gt;&lt;strong&gt;3. 互操作相对轻量&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;Interop data 只有 470 项，reverse P/Invoke 只有 3 个，说明项目主要是”纯 C#“，没有大量 P/Invoke 或 COM 互操作。&lt;/p&gt;&lt;p&gt;&lt;strong&gt;4. 模块化程度适中&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;60 个 codegen module，说明代码被组织在多个程序集中，但没有过度碎片化。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;这些数字不能告诉我们什么&lt;a href=&quot;#这些数字不能告诉我们什么&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;❌ &lt;strong&gt;不是 C# 源码文件数量&lt;/strong&gt; —— 一个文件可能有几十上百个类型&lt;br /&gt;
+❌ &lt;strong&gt;不是 C# 类数量&lt;/strong&gt; —— 类型登记包括基础类型、数组、泛型实例等&lt;br /&gt;
+❌ &lt;strong&gt;不是 C# 方法总数&lt;/strong&gt; —— method spec 是泛型规格，不是方法声明&lt;br /&gt;
+❌ &lt;strong&gt;不是运行时对象数量&lt;/strong&gt; —— 这是编译期索引，不是运行时状态&lt;br /&gt;
+❌ &lt;strong&gt;不是所有泛型实例都会被执行&lt;/strong&gt; —— AOT 可能生成了一些实际上不会用到的代码&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;六、实际应用场景&lt;a href=&quot;#六实际应用场景&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;section&gt;&lt;h3&gt;场景 1：比较两个版本的规模变化&lt;a href=&quot;#场景-1比较两个版本的规模变化&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;两个版本的 GameAssembly（比如更新前后）对比 registration 表的计数，可以看出：&lt;/p&gt;&lt;ul&gt;
+&lt;li&gt;泛型膨胀了多少？（generic method pointers 的变化）&lt;/li&gt;
+&lt;li&gt;新增了多少类型？（types 的变化）&lt;/li&gt;
+&lt;li&gt;模块化有没有变化？（codegen modules 的变化）&lt;/li&gt;
+&lt;/ul&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;场景 2：评估 Hook/注入的复杂度&lt;a href=&quot;#场景-2评估-hook注入的复杂度&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;ul&gt;
+&lt;li&gt;泛型方法指针越多，Hook 泛型方法的工作量越大&lt;/li&gt;
+&lt;li&gt;Codegen modules 越多，代码分布越分散&lt;/li&gt;
+&lt;li&gt;Interop data 越多，与 native 的边界越复杂&lt;/li&gt;
+&lt;/ul&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;场景 3：理解性能特征&lt;a href=&quot;#场景-3理解性能特征&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;ul&gt;
+&lt;li&gt;Method specs 多 → 泛型展开多 → 代码体积大 → 可能影响启动时间和内存占用&lt;/li&gt;
+&lt;li&gt;Invoker pointers 多 → 反射/动态调用场景多 → 可能有性能热点&lt;/li&gt;
+&lt;li&gt;Unresolved virtual calls 多 → 运行时虚解析开销大&lt;/li&gt;
+&lt;/ul&gt;&lt;hr /&gt;&lt;/section&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;七、总结&lt;a href=&quot;#七总结&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Registration 表是 IL2CPP AOT 编译器留下的”户口本”，通过解析它，我们可以量化一个项目的 runtime 索引规模：&lt;/p&gt;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;维度&lt;/th&gt;&lt;th&gt;关键数字&lt;/th&gt;&lt;th&gt;含义&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;泛型规模&lt;/td&gt;&lt;td&gt;54,162 ~ 63,374&lt;/td&gt;&lt;td&gt;泛型方法相关表达到五到六万级&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;类型规模&lt;/td&gt;&lt;td&gt;19,553&lt;/td&gt;&lt;td&gt;类型登记项近两万&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;布局规模&lt;/td&gt;&lt;td&gt;6,196&lt;/td&gt;&lt;td&gt;类型布局记录六千级&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;调用规模&lt;/td&gt;&lt;td&gt;12,947&lt;/td&gt;&lt;td&gt;统一调用入口一万两千级&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;模块规模&lt;/td&gt;&lt;td&gt;60&lt;/td&gt;&lt;td&gt;代码分为 60 个模块&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;互操作规模&lt;/td&gt;&lt;td&gt;470&lt;/td&gt;&lt;td&gt;互操作数据较轻量&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;p&gt;&lt;strong&gt;最重要的提醒&lt;/strong&gt;：这些数字描述的是 AOT 编译后的 &lt;strong&gt;runtime 索引规模&lt;/strong&gt;，不是源码层的类/方法数量。它们帮助我们理解 IL2CPP 项目的”体型”和”结构”，但不能直接等同于你写了多少行 C# 代码。&lt;/p&gt;&lt;hr /&gt;&lt;p&gt;&lt;em&gt;分析样本：Unity 2022.3.62f2c1，Windows x64。数据来自 &lt;code&gt;GameAssembly.dll&lt;/code&gt; 的 raw qword dump 与 PDB 符号交叉验证。&lt;/em&gt;&lt;/p&gt;&lt;/section&gt;</content:encoded></item><item><title>MCP 上下文优化：数据压缩与按需加载——字典索引文本格式</title><link>https://zushinzackery2-ship-it.github.io/blog/posts/07-mcp-context-optimization/</link><guid isPermaLink="true">https://zushinzackery2-ship-it.github.io/blog/posts/07-mcp-context-optimization/</guid><description>MCP 对话的上下文窗口有限，但工具返回的数据天然膨胀。优化不是少返回字段，而是重新设计数据表示和加载策略。</description><pubDate>Sun, 07 Jun 2026 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;&lt;p&gt;MCP 对话的上下文窗口有限，但工具返回的数据天然膨胀。优化不是”少返回点字段”，而是重新设计数据表示和加载策略：字段名字典化、数字索引替代长字符串、视觉符号表达结构、不同场景用不同”焦距”。&lt;/p&gt;&lt;/blockquote&gt;
 &lt;hr /&gt;
 &lt;section&gt;&lt;h2&gt;先说结论&lt;a href=&quot;#先说结论&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;上下文优化不是”少返回字段”，而是三层重构：工具定义层（常驻菜单→按需查询）、数据表示层（嵌套 JSON→字典索引文本）、加载策略层（一刀切→分层按需）。字典索引文本让字段名只出现一次，数字索引替代长字符串。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
 &lt;section&gt;&lt;h2&gt;一、上下文压力的来源&lt;a href=&quot;#一上下文压力的来源&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Agent 与 MCP Server 交互时，上下文被三部分占用：&lt;/p&gt;&lt;ol&gt;
@@ -676,320 +992,4 @@
 &lt;li&gt;&lt;code&gt;nvwgf2umx.dll&lt;/code&gt; 是大型 D3D 图形 UMD，具备 &lt;code&gt;CreateDXGIFactory2&lt;/code&gt;、&lt;code&gt;QueryDisplayConfig&lt;/code&gt;、&lt;code&gt;GetDisplayConfigBufferSizes&lt;/code&gt; 等 DXGI / display topology 边界。&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;nvapi64.dll&lt;/code&gt; 公开导出很少，主要通过 query interface / direct method 模式暴露能力。&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;nvlddmkm.sys&lt;/code&gt; 是 WDDM kernel miniport，覆盖 adapter、显存、队列、DMA、fault、tile/comptag、present sync 等行为域。&lt;/li&gt;
-&lt;/ul&gt;&lt;p&gt;这套证据足以支撑一篇”驱动行为链与接口边界分析”类技术博客，也适合写入简历中的逆向工程项目经历。但它不是厂商级源码复原，也不是闭源驱动内部算法的完整还原。对公开技术写作来说，最稳妥、最可辩护的定位是：&lt;strong&gt;基于可复查证据链的 NVIDIA Windows 图形驱动栈行为边界逆向分析&lt;/strong&gt;。&lt;/p&gt;&lt;hr /&gt;&lt;p&gt;&lt;em&gt;分析环境：Windows x64，NVIDIA GeForce RTX 4060 Laptop GPU，驱动版本 32.0.15.8129。&lt;/em&gt;&lt;/p&gt;&lt;/section&gt;</content:encoded></item><item><title>读懂 IL2CPP 的&quot;户口本&quot;：一张表看穿你的 Unity 项目有多大</title><link>https://zushinzackery2-ship-it.github.io/blog/posts/02-il2cpp-registration-counts/</link><guid isPermaLink="true">https://zushinzackery2-ship-it.github.io/blog/posts/02-il2cpp-registration-counts/</guid><description>每个 IL2CPP 构建的 Unity 游戏，都在 GameAssembly.dll 里藏了一份记录 runtime 索引规模的表。本文教你读懂这份户口本，用真实数据量化项目复杂度。</description><pubDate>Tue, 02 Jun 2026 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;&lt;p&gt;每个 IL2CPP 构建的 Unity 游戏，都在 GameAssembly.dll 里藏了一份”户口本”——记录着泛型、类型、方法等 runtime 索引的规模。本文教你读懂这份”户口本”，用真实数据量化一个 IL2CPP 项目的复杂度。&lt;/p&gt;&lt;/blockquote&gt;
-&lt;hr /&gt;
-&lt;section&gt;&lt;h2&gt;先说结论&lt;a href=&quot;#先说结论&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;当前样本的 IL2CPP registration 计数：泛型方法指针 54,162 个、方法规格 63,374 个、类型登记 19,553 个、调用入口 12,947 个、类型布局 6,196 组、代码模块 60 个。这些数字描述的是 AOT 编译后的 runtime 索引规模，不是源码层的类/方法数量。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;一、什么是 Registration 表&lt;a href=&quot;#一什么是-registration-表&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;使用 Unity 的 IL2CPP 后端构建项目时，编译器会做两件事：&lt;/p&gt;&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;把你的 C# 代码翻译成 C++，再编译成机器码&lt;/strong&gt; —— 这些代码存在 GameAssembly.dll 里&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;生成一份”索引目录”&lt;/strong&gt; —— 记录所有类型、方法、泛型实例的位置和关系，也存在 GameAssembly.dll 里&lt;/li&gt;
-&lt;/ol&gt;&lt;p&gt;这份”索引目录”就是 &lt;strong&gt;Registration 表&lt;/strong&gt;。它有两张：&lt;/p&gt;&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;&lt;code&gt;g_CodeRegistration&lt;/code&gt;&lt;/strong&gt; —— “代码入口表”，记录各种 native 代码入口的地址&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;&lt;code&gt;g_MetadataRegistration&lt;/code&gt;&lt;/strong&gt; —— “元数据索引表”，记录类型、泛型、方法规格等索引&lt;/li&gt;
-&lt;/ul&gt;&lt;p&gt;它们不是源码统计，而是 AOT 编译器在生成 GameAssembly 时写死的二进制数据。通过解析它们，我们可以量化一个项目的 runtime 规模。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;二、如何读取：Count/Pointer 成对布局&lt;a href=&quot;#二如何读取countpointer-成对布局&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Registration 表采用一种简单的重复模式：&lt;/p&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;数量&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;指向数组的指针&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;数量&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;指向数组的指针&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;5&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;...&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;就像这样：&lt;/p&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;g_MetadataRegistration 的前 16 字节：&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;0x00 = 5894     ← 有 5894 个泛型类记录&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;0x08 = 0x1812d03a0  ← 这些记录从这个地址开始&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;理解了这个模式，下面的数据就都能读懂了。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;三、g_CodeRegistration：代码入口”花名册”&lt;a href=&quot;#三g_coderegistration代码入口花名册&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;这张表告诉我们：GameAssembly 里有多少种不同的”代码入口”。&lt;/p&gt;&lt;section&gt;&lt;h3&gt;总览&lt;a href=&quot;#总览&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;项目&lt;/th&gt;&lt;th&gt;数量&lt;/th&gt;&lt;th&gt;通俗解释&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;Reverse P/Invoke wrappers&lt;/td&gt;&lt;td&gt;&lt;strong&gt;3&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;Native 回调 C# 的”翻译官”&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Generic method pointers&lt;/td&gt;&lt;td&gt;&lt;strong&gt;54,162&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;泛型方法的实际代码入口&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Invoker pointers&lt;/td&gt;&lt;td&gt;&lt;strong&gt;12,947&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;Runtime 统一调用的”中转站”&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Unresolved virtual calls&lt;/td&gt;&lt;td&gt;&lt;strong&gt;2,039&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;运行时才能确定目标的虚调用&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Interop data&lt;/td&gt;&lt;td&gt;&lt;strong&gt;470&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;与 Native/COM 互操作的数据&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Codegen modules&lt;/td&gt;&lt;td&gt;&lt;strong&gt;60&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;代码被分成了 60 个模块&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;逐项解读&lt;a href=&quot;#逐项解读&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;section&gt;&lt;h4&gt;Reverse P/Invoke Wrappers（3 个）&lt;a href=&quot;#reverse-pinvoke-wrappers3-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;当 Native 代码需要回调 C# 代码时（比如 Windows API 的回调函数），IL2CPP 需要一层”翻译”来把调用约定、参数布局转换好。这个样本只有 3 个 wrapper，说明这类场景很少。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Generic Method Pointers（54,162 个）&lt;a href=&quot;#generic-method-pointers54162-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;这是最大的一类。你的 C# 代码里写了 &lt;code&gt;List&amp;lt;T&amp;gt;&lt;/code&gt;、&lt;code&gt;Dictionary&amp;lt;K,V&amp;gt;&lt;/code&gt; 这样的泛型，IL2CPP 在 AOT 阶段会把它们实例化成具体的类型（如 &lt;code&gt;List&amp;lt;int&amp;gt;&lt;/code&gt;、&lt;code&gt;List&amp;lt;string&amp;gt;&lt;/code&gt;），每个实例对应一个 native 代码入口。&lt;/p&gt;&lt;p&gt;&lt;strong&gt;54,162 不是说你写了 5 万多个泛型方法&lt;/strong&gt;，而是说 AOT 展开后产生了 5 万多个具体的代码入口。这反映了项目的泛型使用程度。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Invoker Pointers（12,947 个）&lt;a href=&quot;#invoker-pointers12947-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;Invoker 是 IL2CPP runtime 的”统一呼叫台”。通过反射调用方法、或 runtime 需要做动态分发时，会通过 invoker 来调用目标方法。&lt;/p&gt;&lt;p&gt;12,947 个 invoker 说明 runtime 有一万多个可调度的”中转入口”。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Unresolved Virtual Calls（2,039 个）&lt;a href=&quot;#unresolved-virtual-calls2039-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;AOT 编译时，有些虚调用、接口调用的目标在编译期无法确定（比如泛型虚方法）。IL2CPP 会保留这些”待解析”的入口，在运行时通过 vtable 或其他机制找到真正的目标。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Interop Data（470 项）&lt;a href=&quot;#interop-data470-项&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;与 Native 代码、COM、WinRT、P/Invoke 互操作相关的数据。470 项说明这个项目有一定的 native 互操作，但不算特别重。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Codegen Modules（60 个）&lt;a href=&quot;#codegen-modules60-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;IL2CPP 把生成的代码按模块拆分，每个模块通常对应一个程序集或代码单元。60 个模块说明项目有一定规模，代码被组织在多个程序集中。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;&lt;/section&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;四、g_MetadataRegistration：元数据”档案库”&lt;a href=&quot;#四g_metadataregistration元数据档案库&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;如果说 CodeRegistration 是”花名册”，MetadataRegistration 就是”档案库”——记录类型、泛型、方法规格等 metadata 索引。&lt;/p&gt;&lt;section&gt;&lt;h3&gt;总览&lt;a href=&quot;#总览-1&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;项目&lt;/th&gt;&lt;th&gt;数量&lt;/th&gt;&lt;th&gt;通俗解释&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;Generic classes&lt;/td&gt;&lt;td&gt;&lt;strong&gt;5,894&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;泛型类的具体实例登记&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Generic instances&lt;/td&gt;&lt;td&gt;&lt;strong&gt;3,665&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;泛型参数的不同组合&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Generic method table&lt;/td&gt;&lt;td&gt;&lt;strong&gt;54,304&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;泛型方法的登记关系&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Types&lt;/td&gt;&lt;td&gt;&lt;strong&gt;19,553&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;所有类型的登记项&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Method specs&lt;/td&gt;&lt;td&gt;&lt;strong&gt;63,374&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;方法泛型规格&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Field offsets&lt;/td&gt;&lt;td&gt;&lt;strong&gt;6,196&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;字段在内存中的偏移量&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Type definition sizes&lt;/td&gt;&lt;td&gt;&lt;strong&gt;6,196&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;类型在内存中的大小&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Metadata usages&lt;/td&gt;&lt;td&gt;&lt;strong&gt;0&lt;/strong&gt;&lt;/td&gt;&lt;td&gt;当前为空&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;逐项解读&lt;a href=&quot;#逐项解读-1&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;section&gt;&lt;h4&gt;Generic Classes（5,894 个）&lt;a href=&quot;#generic-classes5894-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;不是说你写了 5,894 个泛型类，而是说 AOT 展开后产生了 5,894 个具体的泛型类实例（如 &lt;code&gt;List&amp;lt;int&amp;gt;&lt;/code&gt;、&lt;code&gt;Dictionary&amp;lt;string, object&amp;gt;&lt;/code&gt; 等）。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Generic Instances（3,665 个）&lt;a href=&quot;#generic-instances3665-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;泛型参数的不同组合。比如 &lt;code&gt;List&amp;lt;int&amp;gt;&lt;/code&gt; 和 &lt;code&gt;List&amp;lt;string&amp;gt;&lt;/code&gt; 是两个不同的 generic instance。3,665 个组合说明泛型参数的使用比较多样。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Generic Method Table（54,304 个）&lt;a href=&quot;#generic-method-table54304-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;与 CodeRegistration 里的 generic method pointers（54,162 个）数量接近，但含义不同：&lt;/p&gt;&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;Generic method table&lt;/strong&gt; = “档案”，记录泛型方法的关系和元数据&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Generic method pointers&lt;/strong&gt; = “门牌号”，指向实际的 native 代码&lt;/li&gt;
-&lt;/ul&gt;&lt;p&gt;两者数量接近说明”档案”和”门牌号”基本一一对应，但略有差异（54,304 vs 54,162），因为有些档案条目可能没有对应的代码（比如纯抽象方法）。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Types（19,553 个）&lt;a href=&quot;#types19553-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;包括基础类型（int、string）、数组、泛型实例、修饰类型（ref、指针）等。&lt;strong&gt;不是”19,553 个类”&lt;/strong&gt;，而是 19,553 个类型登记项。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Method Specs（63,374 个）&lt;a href=&quot;#method-specs63374-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;这是整张表中最大的数字。Method spec 描述方法的泛型规格——比如 &lt;code&gt;void Foo&amp;lt;T&amp;gt;()&lt;/code&gt; 在不同 &lt;code&gt;T&lt;/code&gt; 下的规格。&lt;/p&gt;&lt;p&gt;它比 generic method table（54,304）和 generic method pointers（54,162）都大，说明”规格记录”比最终的”代码入口”更多。这很正常：一个泛型方法模板可能对应多个规格，但只有部分规格会生成实际代码。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Field Offsets &amp;amp; Type Definition Sizes（各 6,196 个）&lt;a href=&quot;#field-offsets--type-definition-sizes各-6196-个&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;这两个数字完全相等，说明为同一批类型定义记录了：&lt;/p&gt;&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;字段偏移&lt;/strong&gt; —— 每个字段在对象内存中的位置&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;类型大小&lt;/strong&gt; —— 整个类型占多少字节&lt;/li&gt;
-&lt;/ul&gt;&lt;p&gt;6,196 组记录反映了项目的类型定义规模。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h4&gt;Metadata Usages（0）&lt;a href=&quot;#metadata-usages0&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;当前样本中这个字段为空。这只能说明 generated registration 里没填这个数，不代表项目没有 metadata 使用。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;&lt;/section&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;五、两张表放在一起看&lt;a href=&quot;#五两张表放在一起看&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;把 CodeRegistration 和 MetadataRegistration 的数据合并，可以得到项目的完整规模画像：&lt;/p&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;┌─────────────────────────────────────────────┐&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│           项目规模总览                        │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;├─────────────────────────────────────────────┤&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  泛型方法代码入口      54,162                │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;5&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  泛型方法档案          54,304                │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;6&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  方法规格              63,374  ← 最大        │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;7&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  类型登记              19,553                │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;8&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  泛型类实例            5,894                 │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;9&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  泛型参数组合          3,665                 │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;10&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  统一调用入口          12,947                │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;11&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  类型布局记录          6,196                 │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;12&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  未解析虚调用          2,039                 │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;13&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  互操作数据            470                   │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;14&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  代码模块              60                    │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;15&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;│  Native回调翻译官      3                     │&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;16&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;└─────────────────────────────────────────────┘&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;span&gt;展开&lt;/span&gt;&lt;span&gt;收起&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;section&gt;&lt;h3&gt;这些数字告诉我们什么&lt;a href=&quot;#这些数字告诉我们什么&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;strong&gt;1. 泛型使用程度较高&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;泛型相关表（generic method pointers、generic method table、method specs）都在五万到六万级别，说明项目大量使用了泛型。这在现代 C# 项目中很常见——&lt;code&gt;List&amp;lt;T&amp;gt;&lt;/code&gt;、&lt;code&gt;Dictionary&amp;lt;K,V&amp;gt;&lt;/code&gt;、&lt;code&gt;Task&amp;lt;T&amp;gt;&lt;/code&gt;、&lt;code&gt;IEnumerable&amp;lt;T&amp;gt;&lt;/code&gt; 等无处不在。&lt;/p&gt;&lt;p&gt;&lt;strong&gt;2. 类型系统复杂度中等偏上&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;19,553 个类型登记项、6,196 组类型布局记录，说明项目有一定规模，但不是超大型（超大型项目类型登记项可能达到数十万）。&lt;/p&gt;&lt;p&gt;&lt;strong&gt;3. 互操作相对轻量&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;Interop data 只有 470 项，reverse P/Invoke 只有 3 个，说明项目主要是”纯 C#“，没有大量 P/Invoke 或 COM 互操作。&lt;/p&gt;&lt;p&gt;&lt;strong&gt;4. 模块化程度适中&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;60 个 codegen module，说明代码被组织在多个程序集中，但没有过度碎片化。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;这些数字不能告诉我们什么&lt;a href=&quot;#这些数字不能告诉我们什么&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;❌ &lt;strong&gt;不是 C# 源码文件数量&lt;/strong&gt; —— 一个文件可能有几十上百个类型&lt;br /&gt;
-❌ &lt;strong&gt;不是 C# 类数量&lt;/strong&gt; —— 类型登记包括基础类型、数组、泛型实例等&lt;br /&gt;
-❌ &lt;strong&gt;不是 C# 方法总数&lt;/strong&gt; —— method spec 是泛型规格，不是方法声明&lt;br /&gt;
-❌ &lt;strong&gt;不是运行时对象数量&lt;/strong&gt; —— 这是编译期索引，不是运行时状态&lt;br /&gt;
-❌ &lt;strong&gt;不是所有泛型实例都会被执行&lt;/strong&gt; —— AOT 可能生成了一些实际上不会用到的代码&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;六、实际应用场景&lt;a href=&quot;#六实际应用场景&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;section&gt;&lt;h3&gt;场景 1：比较两个版本的规模变化&lt;a href=&quot;#场景-1比较两个版本的规模变化&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;两个版本的 GameAssembly（比如更新前后）对比 registration 表的计数，可以看出：&lt;/p&gt;&lt;ul&gt;
-&lt;li&gt;泛型膨胀了多少？（generic method pointers 的变化）&lt;/li&gt;
-&lt;li&gt;新增了多少类型？（types 的变化）&lt;/li&gt;
-&lt;li&gt;模块化有没有变化？（codegen modules 的变化）&lt;/li&gt;
-&lt;/ul&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;场景 2：评估 Hook/注入的复杂度&lt;a href=&quot;#场景-2评估-hook注入的复杂度&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;ul&gt;
-&lt;li&gt;泛型方法指针越多，Hook 泛型方法的工作量越大&lt;/li&gt;
-&lt;li&gt;Codegen modules 越多，代码分布越分散&lt;/li&gt;
-&lt;li&gt;Interop data 越多，与 native 的边界越复杂&lt;/li&gt;
-&lt;/ul&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;场景 3：理解性能特征&lt;a href=&quot;#场景-3理解性能特征&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;ul&gt;
-&lt;li&gt;Method specs 多 → 泛型展开多 → 代码体积大 → 可能影响启动时间和内存占用&lt;/li&gt;
-&lt;li&gt;Invoker pointers 多 → 反射/动态调用场景多 → 可能有性能热点&lt;/li&gt;
-&lt;li&gt;Unresolved virtual calls 多 → 运行时虚解析开销大&lt;/li&gt;
-&lt;/ul&gt;&lt;hr /&gt;&lt;/section&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;七、总结&lt;a href=&quot;#七总结&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Registration 表是 IL2CPP AOT 编译器留下的”户口本”，通过解析它，我们可以量化一个项目的 runtime 索引规模：&lt;/p&gt;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;维度&lt;/th&gt;&lt;th&gt;关键数字&lt;/th&gt;&lt;th&gt;含义&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;泛型规模&lt;/td&gt;&lt;td&gt;54,162 ~ 63,374&lt;/td&gt;&lt;td&gt;泛型方法相关表达到五到六万级&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;类型规模&lt;/td&gt;&lt;td&gt;19,553&lt;/td&gt;&lt;td&gt;类型登记项近两万&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;布局规模&lt;/td&gt;&lt;td&gt;6,196&lt;/td&gt;&lt;td&gt;类型布局记录六千级&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;调用规模&lt;/td&gt;&lt;td&gt;12,947&lt;/td&gt;&lt;td&gt;统一调用入口一万两千级&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;模块规模&lt;/td&gt;&lt;td&gt;60&lt;/td&gt;&lt;td&gt;代码分为 60 个模块&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;互操作规模&lt;/td&gt;&lt;td&gt;470&lt;/td&gt;&lt;td&gt;互操作数据较轻量&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;p&gt;&lt;strong&gt;最重要的提醒&lt;/strong&gt;：这些数字描述的是 AOT 编译后的 &lt;strong&gt;runtime 索引规模&lt;/strong&gt;，不是源码层的类/方法数量。它们帮助我们理解 IL2CPP 项目的”体型”和”结构”，但不能直接等同于你写了多少行 C# 代码。&lt;/p&gt;&lt;hr /&gt;&lt;p&gt;&lt;em&gt;分析样本：Unity 2022.3.62f2c1，Windows x64。数据来自 &lt;code&gt;GameAssembly.dll&lt;/code&gt; 的 raw qword dump 与 PDB 符号交叉验证。&lt;/em&gt;&lt;/p&gt;&lt;/section&gt;</content:encoded></item><item><title>Unity IL2CPP 启动原理分析：引擎是如何&quot;唤醒&quot;你的 C# 代码的</title><link>https://zushinzackery2-ship-it.github.io/blog/posts/01-il2cpp-init-deep-dive/</link><guid isPermaLink="true">https://zushinzackery2-ship-it.github.io/blog/posts/01-il2cpp-init-deep-dive/</guid><description>双击运行 Unity 游戏时，引擎内部经历了一系列精密的握手过程，才能把 C# 代码真正运转起来。本文基于 Unity 2022.3.62 IL2CPP 产物的逆向分析，还原这个过程的全貌。</description><pubDate>Mon, 01 Jun 2026 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;&lt;p&gt;双击运行 Unity 游戏时，引擎内部经历了一系列精密的”握手”过程，才能把 C# 代码真正运转起来。本文基于对 Unity 2022.3.62 IL2CPP 产物的逆向分析，还原这个过程的全貌。&lt;/p&gt;&lt;/blockquote&gt;
-&lt;hr /&gt;
-&lt;section&gt;&lt;h2&gt;先说结论&lt;a href=&quot;#先说结论&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;UnityPlayer 不静态链接 IL2CPP，而是运行时动态加载 GameAssembly.dll，通过 &lt;code&gt;LoadDynamicLibrary + LookupSymbol&lt;/code&gt; 批量绑定 &lt;code&gt;il2cpp_*&lt;/code&gt; API。UnityPlayer 负责环境配置，GameAssembly 负责 VM 初始化。&lt;code&gt;global-metadata.dat&lt;/code&gt; 由 GameAssembly 的 MetadataLoader 定位并内存映射。&lt;code&gt;g_CodeRegistration&lt;/code&gt; 与 &lt;code&gt;g_MetadataRegistration&lt;/code&gt; 是 AOT 生成的 registration 结构头，是逆向定位的关键锚点。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;一、两个 DLL 的分工&lt;a href=&quot;#一两个-dll-的分工&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Unity IL2CPP 项目至少包含两个核心 DLL：&lt;/p&gt;&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;UnityPlayer.dll&lt;/strong&gt; —— 引擎的”大管家”，负责窗口、输入、渲染调度、音频等一切游戏基础设施&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;GameAssembly.dll&lt;/strong&gt; —— C# 代码的”翻译本”，里面存着所有 AOT 编译后的原生机器码，以及 IL2CPP 虚拟机本身&lt;/li&gt;
-&lt;/ul&gt;&lt;p&gt;关键的一点是：&lt;strong&gt;UnityPlayer 并不会在编译时就链接 GameAssembly&lt;/strong&gt;。相反，它选择在运行时动态加载。这有点像浏览器加载插件——先检查插件是否存在、版本对不对，确认无误后再建立通信通道。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;二、启动的七步曲&lt;a href=&quot;#二启动的七步曲&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;整个启动流程可以概括为七个阶段：&lt;/p&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;① 进程启动 → Windows 把 UnityPlayer.dll 加载进内存&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;② 引擎入口 → UnityMain 被调用&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;③ 决定用 IL2CPP → LoadScriptingRuntime 选择 IL2CPP 分支&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;④ 加载&quot;翻译本&quot; → LoadIl2Cpp 加载 GameAssembly.dll&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;5&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;⑤ 配置环境 → 告诉 GameAssembly 数据在哪、内存怎么用&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;6&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;⑥ 启动虚拟机 → 调用 il2cpp_init&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;7&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;⑦ 世界就绪 → C# 代码可以运行了&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;下面逐层展开。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;三、UnityPlayer 的准备工作&lt;a href=&quot;#三unityplayer-的准备工作&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;section&gt;&lt;h3&gt;3.1 找到并加载 GameAssembly&lt;a href=&quot;#31-找到并加载-gameassembly&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;一切从 &lt;code&gt;LoadScriptingRuntime&lt;/code&gt; 开始。这个函数做三件事：&lt;/p&gt;&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;拼出 GameAssembly.dll 的完整路径&lt;/strong&gt; —— 通常就在游戏 exe 同级目录&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;调用 LoadIl2Cpp 加载它&lt;/strong&gt; —— 不是简单的 &lt;code&gt;LoadLibrary&lt;/code&gt;，还要做”体检”&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;构造 il2cpp_data 目录路径&lt;/strong&gt; —— 这是 IL2CPP 的数据仓库&lt;/li&gt;
-&lt;/ol&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;3.2 LoadIl2Cpp：不只是加载，还要”验货”&lt;a href=&quot;#32-loadil2cpp不只是加载还要验货&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;code&gt;LoadIl2Cpp&lt;/code&gt; 的核心逻辑像一份入职 checklist：&lt;/p&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;加载 GameAssembly.dll&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;逐个检查关键函数是否存在&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;il2cpp_init          ✓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;5&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;il2cpp_set_data_dir  ✓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;6&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;il2cpp_class_*       ✓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;7&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;il2cpp_gc_*          ✓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;8&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;...&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;9&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;10&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;发现某个函数缺失？&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;11&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;→ 打印 &quot;il2cpp: function xxx not found&quot;&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;12&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;→ 卸载 DLL，标记失败&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;13&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;14&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;全部通过？&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;15&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;→ 保存所有函数指针，准备使用&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;span&gt;展开&lt;/span&gt;&lt;span&gt;收起&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;p&gt;UnityPlayer 会绑定上百个 &lt;code&gt;il2cpp_*&lt;/code&gt; 函数，覆盖以下方面：&lt;/p&gt;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;功能&lt;/th&gt;&lt;th&gt;例子&lt;/th&gt;&lt;th&gt;用途&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;启停虚拟机&lt;/td&gt;&lt;td&gt;&lt;code&gt;il2cpp_init&lt;/code&gt; / &lt;code&gt;il2cpp_shutdown&lt;/code&gt;&lt;/td&gt;&lt;td&gt;开关 IL2CPP 运行时&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;目录配置&lt;/td&gt;&lt;td&gt;&lt;code&gt;il2cpp_set_data_dir&lt;/code&gt;&lt;/td&gt;&lt;td&gt;告诉 GA 数据文件在哪&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;内存管理&lt;/td&gt;&lt;td&gt;&lt;code&gt;il2cpp_set_memory_callbacks&lt;/code&gt;&lt;/td&gt;&lt;td&gt;Unity 用自己的分配器接管&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;类型查询&lt;/td&gt;&lt;td&gt;&lt;code&gt;il2cpp_class_from_name&lt;/code&gt;&lt;/td&gt;&lt;td&gt;运行时查找 C# 类&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;GC 控制&lt;/td&gt;&lt;td&gt;&lt;code&gt;il2cpp_gc_collect&lt;/code&gt;&lt;/td&gt;&lt;td&gt;触发垃圾回收&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;异常处理&lt;/td&gt;&lt;td&gt;&lt;code&gt;il2cpp_raise_exception&lt;/code&gt;&lt;/td&gt;&lt;td&gt;抛出异常&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;p&gt;&lt;strong&gt;核心设计&lt;/strong&gt;：UnityPlayer 与 GameAssembly 之间不是传统的 import table 依赖，而是运行时动态绑定。这让 Unity 可以在不同后端（Mono / IL2CPP）之间灵活切换。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;3.3 配置环境参数&lt;a href=&quot;#33-配置环境参数&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;加载成功后，&lt;code&gt;InitializeIl2CppFromMain&lt;/code&gt; 开始”布置房间”：&lt;/p&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;1. 安装 Unity 的内存分配器（让 IL2CPP 用 Unity 的内存池）&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;2. 调整 IL2CPP 内存池大小&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;3. 传入命令行参数&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;4. 传入 config 目录路径&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;5&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;5. 传入 data 目录路径（就是前面拼的 il2cpp_data）&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;6&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;6. 传入调试器参数&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;7&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;7. 最后，调用 il2cpp_init(&quot;IL2CPP Root Domain&quot;)&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;第 5 步传入的 &lt;code&gt;dataDir&lt;/code&gt; 非常关键 —— 后面 GameAssembly 会用它来找 &lt;code&gt;global-metadata.dat&lt;/code&gt; 文件。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;3.4 失败处理&lt;a href=&quot;#34-失败处理&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;如果加载失败，玩家会看到：&lt;/p&gt;&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;&quot;Failed to load il2cpp&quot;&lt;/code&gt; —— DLL 本身加载失败&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;&quot;Failed to initialize IL2CPP&quot;&lt;/code&gt; —— 加载成功但初始化失败&lt;/li&gt;
-&lt;/ul&gt;&lt;p&gt;如果某个关键函数缺失，控制台还会打印具体的名字，方便开发者排查。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;四、GameAssembly 内部的”开机自检”&lt;a href=&quot;#四gameassembly-内部的开机自检&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;section&gt;&lt;h3&gt;4.1 il2cpp_init：一扇旋转门&lt;a href=&quot;#41-il2cpp_init一扇旋转门&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;GameAssembly 导出的 &lt;code&gt;il2cpp_init&lt;/code&gt; 非常薄，只做两件事：&lt;/p&gt;&lt;ol&gt;
-&lt;li&gt;设置 locale（本地化）&lt;/li&gt;
-&lt;li&gt;调用 &lt;code&gt;Runtime::Init&lt;/code&gt; —— 真正的”开机自检”在这里&lt;/li&gt;
-&lt;/ol&gt;&lt;p&gt;无论 UnityPlayer 传 UTF-8 还是 UTF-16 的域名，最终都走同一个入口。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;4.2 Runtime::Init：按顺序点亮各个子系统&lt;a href=&quot;#42-runtimeinit按顺序点亮各个子系统&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;code&gt;Runtime::Init&lt;/code&gt; 是 IL2CPP VM 的心脏，长约 4400 字节。它按严格的顺序初始化各个子系统：&lt;/p&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;Runtime::Init(&quot;IL2CPP Root Domain&quot;)&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;│&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ① 平台层 ── os::Initialize（Windows API 封装）&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ② 本地化 ── os::Locale::Initialize&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;5&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ③ 元数据分配器 ── MetadataAllocInitialize&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;6&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ④ 原生镜像 ── os::Image::Initialize&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;7&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ⑤ 线程层 ── os::Thread::Init&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;8&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ⑥ 同步上下文 ── SynchronizationContext::Initialize&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;9&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;│&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;10&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ⑦ 元数据缓存 ── MetadataCache::Initialize  ★ 核心&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;11&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;│     ├─ GlobalMetadata::Initialize&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;12&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;│     │   ├─ 找 global-metadata.dat&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;13&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;│     │   ├─ 内存映射文件&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;14&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;│     │   └─ 分配运行期工作表&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;15&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;│     ├─ 注册泛型配置&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;16&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;│     └─ 构建 Image / Assembly / Class 索引&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;17&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;│&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;18&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ⑧ 垃圾回收 ── GC::Initialize&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;19&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ⑨ VM 线程 ── Thread::Initialize&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;20&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ⑩ 加载基础程序集 ── Assembly::Load（如 mscorlib）&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;21&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ⑪ 初始化基础类型 ── Class::FromName / Class::Init&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;22&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;├─ ⑫ GC 终结器 ── GC::InitializeFinalizer&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;23&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;└─ ⑬ 收尾 ── MetadataCache::InitializeGCSafe&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;span&gt;展开&lt;/span&gt;&lt;span&gt;收起&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;p&gt;这个顺序不是随意的。比如必须先初始化元数据分配器，才能分配元数据缓存；必须先加载基础程序集，才能初始化基础类型。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;4.3 从”静态数据”到”活的世界”&lt;a href=&quot;#43-从静态数据到活的世界&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;初始化过程中，GameAssembly 内部发生了一个重要转变：&lt;/p&gt;&lt;p&gt;&lt;strong&gt;初始化前：&lt;/strong&gt;&lt;/p&gt;&lt;ul&gt;
-&lt;li&gt;GameAssembly 只是一块刚加载进内存的 PE 文件&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;global-metadata.dat&lt;/code&gt; 还躺在硬盘上&lt;/li&gt;
-&lt;li&gt;各种 registration 表只是二进制数据，没有”生命”&lt;/li&gt;
-&lt;/ul&gt;&lt;p&gt;&lt;strong&gt;初始化后：&lt;/strong&gt;&lt;/p&gt;&lt;ul&gt;
-&lt;li&gt;MetadataLoader 把 &lt;code&gt;global-metadata.dat&lt;/code&gt; 映射进内存&lt;/li&gt;
-&lt;li&gt;Registration 表被 runtime”消化”成可查询的索引&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;Il2CppImage&lt;/code&gt;、&lt;code&gt;Il2CppAssembly&lt;/code&gt;、&lt;code&gt;Il2CppClass&lt;/code&gt; 等结构被构建出来&lt;/li&gt;
-&lt;li&gt;GC 堆准备好了，线程系统就绪了&lt;/li&gt;
-&lt;li&gt;UnityPlayer 可以通过 &lt;code&gt;il2cpp_*&lt;/code&gt; API 创建和操作 C# 对象&lt;/li&gt;
-&lt;/ul&gt;&lt;hr /&gt;&lt;/section&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;五、Metadata 文件：C# 世界的”地图”&lt;a href=&quot;#五metadata-文件c-世界的地图&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;section&gt;&lt;h3&gt;5.1 它从哪来&lt;a href=&quot;#51-它从哪来&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;code&gt;global-metadata.dat&lt;/code&gt; 是 Unity 在 AOT 编译阶段生成的元数据文件，相当于 C# 世界的”地图”——里面记录了所有类、方法、字段、属性、泛型信息的位置和关系。&lt;/p&gt;&lt;p&gt;它的加载路径是：&lt;/p&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;UnityPlayer 拼出 il2cpp_data 路径&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;传给 GameAssembly（il2cpp_set_data_dir）&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;5&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;GameAssembly 的 Runtime::GetDataDir() 读取&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;6&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;7&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;MetadataLoader 拼接：dataDir + &quot;Metadata/global-metadata.dat&quot;&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;8&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;9&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;File::Open 打开文件&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;10&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;11&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;MemoryMappedFile::Map 映射到内存&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;注意：&lt;strong&gt;UnityPlayer 只负责告诉 GameAssembly 数据目录在哪，从不直接碰这个文件。&lt;/strong&gt; 这是清晰的职责分离。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;5.2 Registration 表：编译期埋下的”路标”&lt;a href=&quot;#52-registration-表编译期埋下的路标&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;除了 metadata 文件，GameAssembly 里还有两组编译期生成的 registration 表：&lt;/p&gt;&lt;p&gt;&lt;strong&gt;&lt;code&gt;g_CodeRegistration&lt;/code&gt;&lt;/strong&gt; —— 描述 native code 入口：&lt;/p&gt;&lt;ul&gt;
-&lt;li&gt;泛型方法指针（54,162 个）&lt;/li&gt;
-&lt;li&gt;Invoker 入口（12,947 个）&lt;/li&gt;
-&lt;li&gt;未解析虚调用入口（2,039 个）&lt;/li&gt;
-&lt;li&gt;互操作数据（470 项）&lt;/li&gt;
-&lt;li&gt;Codegen 模块（60 个）&lt;/li&gt;
-&lt;/ul&gt;&lt;p&gt;&lt;strong&gt;&lt;code&gt;g_MetadataRegistration&lt;/code&gt;&lt;/strong&gt; —— 描述 metadata 索引：&lt;/p&gt;&lt;ul&gt;
-&lt;li&gt;泛型类（5,894 个）&lt;/li&gt;
-&lt;li&gt;泛型实例（3,665 个）&lt;/li&gt;
-&lt;li&gt;类型（19,553 个）&lt;/li&gt;
-&lt;li&gt;方法规格（63,374 个）&lt;/li&gt;
-&lt;li&gt;字段偏移（6,196 组）&lt;/li&gt;
-&lt;/ul&gt;&lt;p&gt;这些表不是源码统计，而是 AOT 编译器在生成 GameAssembly 时”埋下的路标”。Runtime 初始化时把它们和 metadata 文件结合起来，才能构建出完整的 C# 运行世界。&lt;/p&gt;&lt;/section&gt;&lt;section&gt;&lt;h3&gt;5.3 Registration 的注册过程&lt;a href=&quot;#53-registration-的注册过程&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h3&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;s_Il2CppCodegenRegistration（编译期生成的入口函数）&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;→ 调用 il2cpp_codegen_register（只有 5 字节的跳板）&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;→ MetadataCache::Register&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;→ GlobalMetadata::Register&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;这个过程把静态的 registration 数据”激活”成 runtime 可用的索引结构。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;六、一张图看懂职责边界&lt;a href=&quot;#六一张图看懂职责边界&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;工作&lt;/th&gt;&lt;th&gt;UnityPlayer&lt;/th&gt;&lt;th&gt;GameAssembly&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;找到对方&lt;/td&gt;&lt;td&gt;✅ 拼路径、加载 DLL&lt;/td&gt;&lt;td&gt;❌ 被动等待&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;建立通信&lt;/td&gt;&lt;td&gt;✅ 动态绑定所有 API&lt;/td&gt;&lt;td&gt;提供导出函数&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;告诉数据在哪&lt;/td&gt;&lt;td&gt;✅ 传 dataDir&lt;/td&gt;&lt;td&gt;保存并使用&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;读取 metadata 文件&lt;/td&gt;&lt;td&gt;❌ 不碰&lt;/td&gt;&lt;td&gt;✅ MetadataLoader 负责&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;构建类型/方法索引&lt;/td&gt;&lt;td&gt;❌ 不做&lt;/td&gt;&lt;td&gt;✅ 核心工作&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;注册 AOT 代码&lt;/td&gt;&lt;td&gt;❌ 不做&lt;/td&gt;&lt;td&gt;✅ 核心工作&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;提供查询接口&lt;/td&gt;&lt;td&gt;调用方&lt;/td&gt;&lt;td&gt;✅ 实现方&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;p&gt;&lt;strong&gt;一句话总结&lt;/strong&gt;：UnityPlayer 是”甲方”，负责提需求和配环境；GameAssembly 是”乙方”，负责实现 IL2CPP 虚拟机的全部内部工作。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;七、对逆向/安全工作的价值&lt;a href=&quot;#七对逆向安全工作的价值&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;理解这个启动流程后，以下工作会变得更清晰：&lt;/p&gt;&lt;p&gt;&lt;strong&gt;定位关键函数&lt;/strong&gt;：&lt;/p&gt;&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;il2cpp_init&lt;/code&gt; (&lt;code&gt;0x226270&lt;/code&gt;) —— VM 入口&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;Runtime::Init&lt;/code&gt; (&lt;code&gt;0x2046c0&lt;/code&gt;) —— 主初始化&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;MetadataCache::Initialize&lt;/code&gt; (&lt;code&gt;0x1a0070&lt;/code&gt;) —— 元数据缓存初始化&lt;/li&gt;
-&lt;/ul&gt;&lt;p&gt;&lt;strong&gt;定位关键数据&lt;/strong&gt;：&lt;/p&gt;&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;g_CodeRegistration&lt;/code&gt; (&lt;code&gt;0x12773d0&lt;/code&gt;) —— native code 入口表&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;g_MetadataRegistration&lt;/code&gt; (&lt;code&gt;0x14e8cb0&lt;/code&gt;) —— metadata 索引表&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;g_CodeGenModules&lt;/code&gt; (&lt;code&gt;0x1738340&lt;/code&gt;) —— 代码生成模块数组&lt;/li&gt;
-&lt;/ul&gt;&lt;p&gt;&lt;strong&gt;Hook 时机选择&lt;/strong&gt;：&lt;/p&gt;&lt;ul&gt;
-&lt;li&gt;在 &lt;code&gt;il2cpp_init&lt;/code&gt; 之前 Hook：只能改 UnityPlayer 的行为&lt;/li&gt;
-&lt;li&gt;在 &lt;code&gt;Runtime::Init&lt;/code&gt; 之后 Hook：可以操作完整的 IL2CPP 运行时&lt;/li&gt;
-&lt;li&gt;在 &lt;code&gt;MetadataCache::Initialize&lt;/code&gt; 之后 Hook：metadata 索引已构建，可以查询类型和方法&lt;/li&gt;
-&lt;/ul&gt;&lt;hr /&gt;&lt;/section&gt;
-&lt;section&gt;&lt;h2&gt;八、总结&lt;a href=&quot;#八总结&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Unity IL2CPP 的启动不是简单的”加载 DLL → 跑代码”，而是一个精心设计的分层握手过程：&lt;/p&gt;&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;UnityPlayer 动态加载 GameAssembly&lt;/strong&gt;，通过运行时符号绑定建立通信&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;UnityPlayer 配置环境&lt;/strong&gt;：内存、目录、命令行、调试器参数&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;GameAssembly 初始化 VM&lt;/strong&gt;：按顺序点亮 OS、locale、metadata、GC、线程等子系统&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;MetadataLoader 映射 global-metadata.dat&lt;/strong&gt;，把”地图”读进内存&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Registration 表被激活&lt;/strong&gt;，编译期埋下的”路标”变成运行时可查询的索引&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;托管世界就绪&lt;/strong&gt;，C# 代码可以运行了&lt;/li&gt;
-&lt;/ol&gt;&lt;p&gt;这个设计让 Unity 保持了引擎与脚本后端的解耦，同时也为逆向分析提供了清晰的切入点。&lt;/p&gt;&lt;hr /&gt;&lt;p&gt;&lt;em&gt;分析样本：Unity 2022.3.62f2c1，Windows x64。文中地址基于 PE 镜像基址 &lt;code&gt;0x180000000&lt;/code&gt;。&lt;/em&gt;&lt;/p&gt;&lt;/section&gt;</content:encoded></item></channel></rss>
+&lt;/ul&gt;&lt;p&gt;这套证据足以支撑一篇”驱动行为链与接口边界分析”类技术博客，也适合写入简历中的逆向工程项目经历。但它不是厂商级源码复原，也不是闭源驱动内部算法的完整还原。对公开技术写作来说，最稳妥、最可辩护的定位是：&lt;strong&gt;基于可复查证据链的 NVIDIA Windows 图形驱动栈行为边界逆向分析&lt;/strong&gt;。&lt;/p&gt;&lt;hr /&gt;&lt;p&gt;&lt;em&gt;分析环境：Windows x64，NVIDIA GeForce RTX 4060 Laptop GPU，驱动版本 32.0.15.8129。&lt;/em&gt;&lt;/p&gt;&lt;/section&gt;</content:encoded></item></channel></rss>
