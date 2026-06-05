@@ -1,4 +1,4 @@
 User-agent: *
 Disallow: /_astro/
 
-Sitemap: https://zushinzackery2-ship-it.github.io/Blog/sitemap-index.xml
+Sitemap: https://zushinzackery2-ship-it.github.io/blog/sitemap-index.xml
