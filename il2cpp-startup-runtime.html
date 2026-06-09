@@ -1,0 +1,892 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IL2CPP 启动链路演示</title>
+  <style>
+    :root
+    {
+      color-scheme: dark;
+      --bg: #0b1020;
+      --panel: rgba(15, 23, 42, 0.92);
+      --panel-soft: rgba(30, 41, 59, 0.72);
+      --line: rgba(148, 163, 184, 0.36);
+      --text: #e5edf8;
+      --muted: #9fb0c7;
+      --cyan: #38bdf8;
+      --violet: #a78bfa;
+      --amber: #fbbf24;
+      --green: #34d399;
+      --red: #fb7185;
+    }
+
+    *
+    {
+      box-sizing: border-box;
+    }
+
+    body
+    {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(56, 189, 248, 0.18), transparent 34rem),
+        radial-gradient(circle at bottom right, rgba(167, 139, 250, 0.18), transparent 34rem),
+        var(--bg);
+      color: var(--text);
+      font-family: Inter, "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    }
+
+    main
+    {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 28px 0 34px;
+    }
+
+    .hero
+    {
+      display: flex;
+      gap: 16px;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 18px;
+    }
+
+    h1
+    {
+      margin: 0 0 8px;
+      font-size: clamp(24px, 4vw, 40px);
+      letter-spacing: -0.03em;
+    }
+
+    .subtitle
+    {
+      max-width: 780px;
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 15px;
+    }
+
+    .badge
+    {
+      flex: 0 0 auto;
+      border: 1px solid rgba(56, 189, 248, 0.42);
+      border-radius: 999px;
+      padding: 9px 13px;
+      color: #bae6fd;
+      background: rgba(14, 165, 233, 0.1);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .shell
+    {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr) 320px;
+      gap: 14px;
+      min-height: 660px;
+    }
+
+    .panel
+    {
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: var(--panel);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+      overflow: hidden;
+    }
+
+    .panel-title
+    {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border-bottom: 1px solid var(--line);
+      padding: 14px 16px;
+      background: rgba(15, 23, 42, 0.7);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .steps
+    {
+      padding: 12px;
+    }
+
+    .step
+    {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 10px;
+      width: 100%;
+      margin: 0 0 8px;
+      border: 1px solid transparent;
+      border-radius: 16px;
+      padding: 10px;
+      background: rgba(30, 41, 59, 0.36);
+      color: var(--text);
+      text-align: left;
+      cursor: pointer;
+      transition: 160ms ease;
+    }
+
+    .step:hover
+    {
+      border-color: rgba(56, 189, 248, 0.38);
+      background: rgba(30, 41, 59, 0.62);
+    }
+
+    .step.active
+    {
+      border-color: rgba(56, 189, 248, 0.7);
+      background: linear-gradient(135deg, rgba(14, 165, 233, 0.26), rgba(124, 58, 237, 0.2));
+    }
+
+    .num
+    {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(148, 163, 184, 0.16);
+      color: #cbd5e1;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .step.active .num
+    {
+      background: var(--cyan);
+      color: #082f49;
+    }
+
+    .step-name
+    {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .step-meta
+    {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .stage
+    {
+      position: relative;
+      padding: 16px;
+    }
+
+    .toolbar
+    {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .tool
+    {
+      border: 1px solid rgba(148, 163, 184, 0.32);
+      border-radius: 12px;
+      padding: 8px 11px;
+      background: rgba(15, 23, 42, 0.72);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 12px;
+      transition: 160ms ease;
+    }
+
+    .tool:hover
+    {
+      border-color: rgba(56, 189, 248, 0.68);
+    }
+
+    .tool.primary
+    {
+      border-color: rgba(52, 211, 153, 0.54);
+      color: #bbf7d0;
+      background: rgba(22, 163, 74, 0.16);
+    }
+
+    .graph
+    {
+      position: relative;
+      min-height: 530px;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 20px;
+      overflow: hidden;
+      background:
+        linear-gradient(rgba(148, 163, 184, 0.055) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.055) 1px, transparent 1px),
+        rgba(2, 6, 23, 0.34);
+      background-size: 28px 28px;
+    }
+
+    .lane
+    {
+      position: absolute;
+      inset: 16px auto 16px 16px;
+      width: calc(50% - 24px);
+      border: 1px solid rgba(56, 189, 248, 0.22);
+      border-radius: 18px;
+      background: rgba(8, 47, 73, 0.12);
+    }
+
+    .lane.right
+    {
+      right: 16px;
+      left: auto;
+      border-color: rgba(167, 139, 250, 0.24);
+      background: rgba(76, 29, 149, 0.12);
+    }
+
+    .lane-label
+    {
+      position: absolute;
+      top: 10px;
+      left: 14px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .node
+    {
+      position: absolute;
+      width: 190px;
+      border: 1px solid rgba(148, 163, 184, 0.32);
+      border-radius: 16px;
+      padding: 12px;
+      background: rgba(15, 23, 42, 0.92);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
+      transition: 180ms ease;
+    }
+
+    .node.active
+    {
+      border-color: rgba(56, 189, 248, 0.82);
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12), 0 18px 40px rgba(14, 165, 233, 0.2);
+      transform: translateY(-2px);
+    }
+
+    .node.done
+    {
+      border-color: rgba(52, 211, 153, 0.52);
+    }
+
+    .node.warn
+    {
+      border-color: rgba(251, 191, 36, 0.56);
+    }
+
+    .node-title
+    {
+      margin: 0 0 7px;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .node-text
+    {
+      margin: 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .unity
+    {
+      left: 42px;
+    }
+
+    .ga
+    {
+      right: 42px;
+    }
+
+    .y1
+    {
+      top: 62px;
+    }
+
+    .y2
+    {
+      top: 158px;
+    }
+
+    .y3
+    {
+      top: 254px;
+    }
+
+    .y4
+    {
+      top: 350px;
+    }
+
+    .y5
+    {
+      top: 446px;
+    }
+
+    svg.links
+    {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .link
+    {
+      stroke: rgba(148, 163, 184, 0.36);
+      stroke-width: 2;
+      fill: none;
+      transition: 180ms ease;
+    }
+
+    .link.active
+    {
+      stroke: var(--cyan);
+      stroke-width: 3;
+      filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.55));
+    }
+
+    .details
+    {
+      display: flex;
+      flex-direction: column;
+      min-height: 660px;
+    }
+
+    .detail-body
+    {
+      padding: 16px;
+    }
+
+    .detail-kicker
+    {
+      margin: 0 0 8px;
+      color: var(--cyan);
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .detail-title
+    {
+      margin: 0 0 10px;
+      font-size: 22px;
+      line-height: 1.25;
+    }
+
+    .detail-copy
+    {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.75;
+    }
+
+    .data-card
+    {
+      border: 1px solid rgba(148, 163, 184, 0.26);
+      border-radius: 16px;
+      padding: 12px;
+      background: var(--panel-soft);
+      margin-bottom: 12px;
+    }
+
+    .data-title
+    {
+      margin: 0 0 8px;
+      color: #c4b5fd;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .kv
+    {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      border-top: 1px solid rgba(148, 163, 184, 0.18);
+      padding: 7px 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .kv:first-of-type
+    {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .kv strong
+    {
+      color: var(--text);
+      font-weight: 800;
+    }
+
+    .callout
+    {
+      border: 1px solid rgba(251, 191, 36, 0.36);
+      border-radius: 16px;
+      padding: 12px;
+      color: #fde68a;
+      background: rgba(120, 53, 15, 0.18);
+      font-size: 12px;
+      line-height: 1.65;
+    }
+
+    .legend
+    {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .legend-item
+    {
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 14px;
+      padding: 10px;
+      background: rgba(15, 23, 42, 0.56);
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .dot
+    {
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      margin-right: 6px;
+      background: var(--cyan);
+    }
+
+    .dot.green
+    {
+      background: var(--green);
+    }
+
+    .dot.amber
+    {
+      background: var(--amber);
+    }
+
+    @media (max-width: 980px)
+    {
+      .shell
+      {
+        grid-template-columns: 1fr;
+      }
+
+      .details
+      {
+        min-height: auto;
+      }
+    }
+
+    @media (max-width: 720px)
+    {
+      .hero
+      {
+        display: block;
+      }
+
+      .badge
+      {
+        display: inline-block;
+        margin-top: 12px;
+      }
+
+      .graph
+      {
+        min-height: 860px;
+      }
+
+      .lane,
+      .lane.right
+      {
+        left: 12px;
+        right: 12px;
+        width: auto;
+      }
+
+      .lane
+      {
+        top: 12px;
+        bottom: auto;
+        height: 410px;
+      }
+
+      .lane.right
+      {
+        top: 434px;
+        bottom: 12px;
+        height: auto;
+      }
+
+      .node
+      {
+        width: calc(100% - 48px);
+        left: 24px !important;
+        right: auto !important;
+      }
+
+      .ga.y1
+      {
+        top: 480px;
+      }
+
+      .ga.y2
+      {
+        top: 576px;
+      }
+
+      .ga.y3
+      {
+        top: 672px;
+      }
+
+      .ga.y4
+      {
+        top: 768px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div>
+        <h1>IL2CPP 启动链路演示</h1>
+        <p class="subtitle">把 UnityPlayer 桥接层、GameAssembly runtime、registration 链、metadata loader 和运行期索引构建拆成可点击阶段。重点是边界：哪些是当前样本已核对，哪些需要 metadata 实体才能继续对齐。</p>
+      </div>
+      <span class="badge">Unity 2022.3.62 · Windows x64</span>
+    </section>
+
+    <section class="shell">
+      <aside class="panel">
+        <div class="panel-title">阶段</div>
+        <div class="steps" id="steps"></div>
+      </aside>
+
+      <section class="panel stage">
+        <div class="toolbar">
+          <button class="tool primary" id="play">自动播放</button>
+          <button class="tool" id="prev">上一阶段</button>
+          <button class="tool" id="next">下一阶段</button>
+          <button class="tool" id="reset">重置</button>
+        </div>
+
+        <div class="graph" aria-label="IL2CPP 启动链路图">
+          <div class="lane">
+            <span class="lane-label">UnityPlayer</span>
+          </div>
+          <div class="lane right">
+            <span class="lane-label">GameAssembly</span>
+          </div>
+
+          <svg class="links" viewBox="0 0 760 530" preserveAspectRatio="none" aria-hidden="true">
+            <path id="link-0" class="link" d="M 210 110 C 270 110, 290 110, 350 110"></path>
+            <path id="link-1" class="link" d="M 350 110 C 430 110, 440 110, 520 110"></path>
+            <path id="link-2" class="link" d="M 210 206 C 310 206, 420 206, 520 206"></path>
+            <path id="link-3" class="link" d="M 615 206 C 615 244, 615 252, 615 290"></path>
+            <path id="link-4" class="link" d="M 520 302 C 420 302, 310 302, 210 398"></path>
+            <path id="link-5" class="link" d="M 210 398 C 310 398, 420 398, 520 398"></path>
+            <path id="link-6" class="link" d="M 615 398 C 615 432, 615 446, 615 482"></path>
+          </svg>
+
+          <article class="node unity y1" data-node="0">
+            <h2 class="node-title">LoadScriptingRuntime</h2>
+            <p class="node-text">选择 IL2CPP 分支，拼出 GameAssembly 与 il2cpp_data。</p>
+          </article>
+
+          <article class="node ga y1" data-node="1">
+            <h2 class="node-title">LoadIl2Cpp</h2>
+            <p class="node-text">动态加载 GameAssembly，批量 LookupSymbol 绑定 il2cpp_*。</p>
+          </article>
+
+          <article class="node unity y2" data-node="2">
+            <h2 class="node-title">InitializeIl2CppFromMain</h2>
+            <p class="node-text">传 memory、config、data、debugger、命令行，再调用 il2cpp_init。</p>
+          </article>
+
+          <article class="node ga y2" data-node="3">
+            <h2 class="node-title">Runtime::Init</h2>
+            <p class="node-text">OS、locale、metadata allocator、thread、MetadataCache、GC、assembly、class。</p>
+          </article>
+
+          <article class="node unity y4 warn" data-node="4">
+            <h2 class="node-title">registration 链</h2>
+            <p class="node-text">s_Il2CppCodegenRegistration → jmp → MetadataCache::Register。</p>
+          </article>
+
+          <article class="node ga y3" data-node="5">
+            <h2 class="node-title">MetadataLoader</h2>
+            <p class="node-text">Runtime::GetDataDir → PathUtils::Combine → File::Open → Map。</p>
+          </article>
+
+          <article class="node ga y4" data-node="6">
+            <h2 class="node-title">Registration Tables</h2>
+            <p class="node-text">g_CodeRegistration 与 g_MetadataRegistration 进入 runtime 状态。</p>
+          </article>
+
+          <article class="node ga y5" data-node="7">
+            <h2 class="node-title">Runtime Query World</h2>
+            <p class="node-text">Image、Assembly、Class、Method、fieldOffsets、generic mappings 可查询。</p>
+          </article>
+        </div>
+
+        <div class="legend">
+          <div class="legend-item"><span class="dot"></span>蓝色：当前阶段</div>
+          <div class="legend-item"><span class="dot green"></span>绿色：已完成阶段</div>
+          <div class="legend-item"><span class="dot amber"></span>黄色：独立 registration 链</div>
+        </div>
+      </section>
+
+      <aside class="panel details">
+        <div class="panel-title">当前节点</div>
+        <div class="detail-body">
+          <p class="detail-kicker" id="detail-kicker"></p>
+          <h2 class="detail-title" id="detail-title"></h2>
+          <p class="detail-copy" id="detail-copy"></p>
+          <div class="data-card">
+            <p class="data-title">证据点</p>
+            <div id="facts"></div>
+          </div>
+          <div class="callout" id="boundary"></div>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const stages = [
+      {
+        title: 'UnityPlayer 装配脚本后端',
+        kicker: 'stage 01',
+        node: 0,
+        links: [0],
+        copy: 'LoadScriptingRuntime 负责选择 IL2CPP 分支，准备 GameAssembly.dll 路径和 il2cpp_data 目录。UnityPlayer 不解析 metadata，只负责把环境交给 GameAssembly。',
+        facts: [
+          ['入口', 'LoadScriptingRuntime'],
+          ['输出', 'GameAssembly.dll + il2cpp_data'],
+          ['边界', 'UnityPlayer 不构建 Il2CppClass / MethodInfo']
+        ],
+        boundary: '这一阶段只有路径和后端选择，不代表 VM、GC、metadata cache 已经可用。'
+      },
+      {
+        title: '动态加载和 API 绑定',
+        kicker: 'stage 02',
+        node: 1,
+        links: [0, 1],
+        copy: 'LoadIl2Cpp 使用动态库加载与 LookupSymbol 批量绑定 il2cpp_*。UnityPlayer 和 GameAssembly 的 ABI 边界就是这批 C API。',
+        facts: [
+          ['绑定方式', 'LoadDynamicLibrary + LookupSymbol'],
+          ['代表 API', 'il2cpp_init / il2cpp_set_data_dir / il2cpp_runtime_invoke'],
+          ['失败路径', '缺少关键导出会卸载 GameAssembly']
+        ],
+        boundary: '此时只有 API 地址可靠，metadata 索引、GC、class cache 还没有完成。'
+      },
+      {
+        title: 'UnityPlayer 传入运行环境',
+        kicker: 'stage 03',
+        node: 2,
+        links: [2],
+        copy: 'InitializeIl2CppFromMain 传入内存回调、命令行、config dir、data dir、debugger options，最后调用 il2cpp_init("IL2CPP Root Domain")。',
+        facts: [
+          ['data dir', 'il2cpp_set_data_dir(il2cpp_data)'],
+          ['memory', 'il2cpp_set_memory_callbacks'],
+          ['入口', 'il2cpp_init("IL2CPP Root Domain")']
+        ],
+        boundary: 'global-metadata.dat 的打开不在 UnityPlayer 侧发生。UnityPlayer 只是把 data dir 交出去。'
+      },
+      {
+        title: 'Runtime::Init 点亮 VM 子系统',
+        kicker: 'stage 04',
+        node: 3,
+        links: [2, 3],
+        copy: 'il2cpp_init 进入 Runtime::Init。当前样本顺序包含 OS、locale、metadata allocator、thread、MetadataCache、GC、Thread、register_allocator、Assembly、Class、InitializeGCSafe。',
+        facts: [
+          ['入口', 'il2cpp_init / il2cpp_init_utf16 → Runtime::Init'],
+          ['关键节点', 'MetadataCache::Initialize'],
+          ['补充顺序', 'Thread::Initialize → register_allocator → Assembly::Load']
+        ],
+        boundary: 'Runtime::Init 是 VM 分水岭，但不是所有 Il2CppClass 都在这一刻完整展开。'
+      },
+      {
+        title: 'registration 链独立进入 runtime',
+        kicker: 'stage 05',
+        node: 4,
+        links: [4, 5],
+        copy: 's_Il2CppCodegenRegistration 调用 il2cpp_codegen_register。当前样本中 il2cpp_codegen_register 是 5 字节 jmp 薄跳板，真正逻辑在 MetadataCache::Register / GlobalMetadata::Register。',
+        facts: [
+          ['入口', 's_Il2CppCodegenRegistration'],
+          ['跳板', 'il2cpp_codegen_register = 5 字节 jmp'],
+          ['真实结构头', 'g_CodeRegistration / g_MetadataRegistration']
+        ],
+        boundary: 's_* 缓存变量不是 generated registration 结构头；generated 结构头是 g_*。'
+      },
+      {
+        title: 'MetadataLoader 定位 metadata 文件',
+        kicker: 'stage 06',
+        node: 5,
+        links: [3],
+        copy: 'MetadataCache::Initialize 进入 GlobalMetadata::Initialize，再到 MetadataLoader::LoadMetadataFile。路径来自 Runtime::GetDataDir，然后组合 Metadata/global-metadata.dat 并映射。',
+        facts: [
+          ['路径链', 'Runtime::GetDataDir → PathUtils::Combine'],
+          ['文件链', 'File::Open → MemoryMappedFile::Map'],
+          ['后续', 'Memory::Calloc / ProcessIl2CppTypeDefinitions']
+        ],
+        boundary: '当前没有取得 global-metadata.dat 实体，所以不声明 magic、version、header、table 已解析。'
+      },
+      {
+        title: 'registration 表提供规模和布局答案',
+        kicker: 'stage 07',
+        node: 6,
+        links: [5, 6],
+        copy: 'g_CodeRegistration 与 g_MetadataRegistration 把 native code 入口、泛型、类型、字段偏移、类型大小等 registration 数据交给 runtime。',
+        facts: [
+          ['codeGenModules', '60'],
+          ['genericMethodPointers', '54,162'],
+          ['fieldOffsets / typeDefinitionsSizes', '6,196 / 6,196']
+        ],
+        boundary: '这些是 registration 层 count，不等同于源码方法数量或 metadata 文件表行数。'
+      },
+      {
+        title: '运行期查询世界成型',
+        kicker: 'stage 08',
+        node: 7,
+        links: [6],
+        copy: 'Image、Assembly、Class、Method、fieldOffsets、generic mappings 逐步变成可查询状态。UnityPlayer 后续通过 il2cpp_* API 查询、创建和调用托管对象。',
+        facts: [
+          ['查询入口', 'il2cpp_class_from_name / il2cpp_runtime_invoke'],
+          ['方法映射', 'GetAllManagedMethods / NativeSymbol::RegisterMethods'],
+          ['边界', '具体字段级对齐需要 metadata 实体']
+        ],
+        boundary: '启动完成代表查询入口可用，不代表所有 class/method 的内部细节都已提前完整初始化。'
+      }
+    ];
+
+    let index = 0;
+    let timer = null;
+
+    const steps = document.getElementById('steps');
+    const detailKicker = document.getElementById('detail-kicker');
+    const detailTitle = document.getElementById('detail-title');
+    const detailCopy = document.getElementById('detail-copy');
+    const facts = document.getElementById('facts');
+    const boundary = document.getElementById('boundary');
+
+    function renderSteps()
+    {
+      steps.innerHTML = '';
+      stages.forEach((stage, stageIndex) =>
+      {
+        const button = document.createElement('button');
+        button.className = `step${stageIndex === index ? ' active' : ''}`;
+        button.type = 'button';
+        button.innerHTML = `<span class="num">${stageIndex + 1}</span><span><span class="step-name">${stage.title}</span><span class="step-meta">${stage.kicker}</span></span>`;
+        button.addEventListener('click', () =>
+        {
+          stop();
+          setStage(stageIndex);
+        });
+        steps.appendChild(button);
+      });
+    }
+
+    function renderGraph(stage)
+    {
+      document.querySelectorAll('.node').forEach((node) =>
+      {
+        const nodeIndex = Number(node.dataset.node);
+        node.classList.toggle('active', nodeIndex === stage.node);
+        node.classList.toggle('done', nodeIndex < stage.node && stage.node !== 4);
+      });
+
+      document.querySelectorAll('.link').forEach((link) =>
+      {
+        const linkIndex = Number(link.id.replace('link-', ''));
+        link.classList.toggle('active', stage.links.includes(linkIndex));
+      });
+    }
+
+    function renderDetails(stage)
+    {
+      detailKicker.textContent = stage.kicker;
+      detailTitle.textContent = stage.title;
+      detailCopy.textContent = stage.copy;
+      facts.innerHTML = stage.facts.map(([key, value]) => `<div class="kv"><span>${key}</span><strong>${value}</strong></div>`).join('');
+      boundary.textContent = stage.boundary;
+    }
+
+    function setStage(nextIndex)
+    {
+      index = (nextIndex + stages.length) % stages.length;
+      const stage = stages[index];
+      renderSteps();
+      renderGraph(stage);
+      renderDetails(stage);
+    }
+
+    function play()
+    {
+      stop();
+      timer = window.setInterval(() =>
+      {
+        setStage(index + 1);
+      }, 1800);
+    }
+
+    function stop()
+    {
+      if (timer)
+      {
+        window.clearInterval(timer);
+        timer = null;
+      }
+    }
+
+    document.getElementById('play').addEventListener('click', play);
+    document.getElementById('prev').addEventListener('click', () =>
+    {
+      stop();
+      setStage(index - 1);
+    });
+    document.getElementById('next').addEventListener('click', () =>
+    {
+      stop();
+      setStage(index + 1);
+    });
+    document.getElementById('reset').addEventListener('click', () =>
+    {
+      stop();
+      setStage(0);
+    });
+
+    setStage(0);
+  </script>
+</body>
+</html>
