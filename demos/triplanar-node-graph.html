@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UE 三面映射材质节点连线示意</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+            background: linear-gradient(180deg, #0b1020 0%, #0e1528 100%);
+            color: #d8e1f2;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            margin-bottom: 20px;
+        }
+        
+        .title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #e7f3ff;
+            margin-bottom: 8px;
+        }
+        
+        .note {
+            font-size: 14px;
+            color: #8ea0bd;
+            line-height: 1.6;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        
+        .tabs input[type="radio"] {
+            display: none;
+        }
+        
+        .tabs label {
+            padding: 10px 16px;
+            background: rgba(21, 31, 55, 0.8);
+            border: 1px solid rgba(142, 160, 189, 0.3);
+            border-radius: 999px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        
+        .tabs label:hover {
+            background: rgba(21, 31, 55, 1);
+            border-color: rgba(142, 160, 189, 0.5);
+        }
+        
+        .tabs input[type="radio"]:checked + label {
+            background: rgba(116, 185, 255, 0.16);
+            border-color: rgba(116, 185, 255, 0.8);
+            color: #e7f3ff;
+        }
+        
+        .diagram-container {
+            display: none;
+            background: radial-gradient(circle at 20% 20%, rgba(116, 185, 255, 0.08), transparent 32%),
+                        radial-gradient(circle at 80% 40%, rgba(196, 167, 255, 0.07), transparent 32%),
+                        rgba(11, 16, 32, 0.72);
+            border: 1px solid rgba(142, 160, 189, 0.25);
+            border-radius: 16px;
+            padding: 20px;
+            overflow-x: auto;
+        }
+        
+        #tab-function:checked ~ .diagram-function,
+        #tab-master:checked ~ .diagram-master {
+            display: block;
+        }
+        
+        svg {
+            display: block;
+            min-width: 1100px;
+            width: 100%;
+            max-width: none;
+        }
+        
+        .node rect {
+            fill: #11182c;
+            stroke: rgba(142, 160, 189, 0.36);
+            stroke-width: 1.2;
+        }
+        
+        .node .head {
+            fill: #151f37;
+        }
+        
+        .node text {
+            fill: #d8e1f2;
+            font-size: 12px;
+        }
+        
+        .node .small {
+            fill: #8ea0bd;
+            font-size: 10.5px;
+        }
+        
+        .pin {
+            fill: #0b1020;
+            stroke: rgba(216, 225, 242, 0.75);
+            stroke-width: 1.2;
+        }
+        
+        .wire {
+            fill: none;
+            stroke: #6f85aa;
+            stroke-width: 2;
+            opacity: 0.88;
+        }
+        
+        .wire.coord { stroke: #74b9ff; }
+        .wire.weight { stroke: #ffd166; }
+        .wire.sample { stroke: #6ee7a8; }
+        .wire.normal { stroke: #c4a7ff; }
+        .wire.mask { stroke: #ff8a8a; }
+        .wire.attr { stroke: #8ab4ff; }
+        
+        .group-label {
+            fill: #8ea0bd;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+        }
+        
+        @media (max-width: 768px) {
+            body {
+                padding: 12px;
+            }
+            
+            .title {
+                font-size: 18px;
+            }
+            
+            .note {
+                font-size: 13px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">UE 三面映射材质节点连线示意</h1>
+            <p class="note">图形只还原数据流和关键节点关系，不追求材质编辑器中的实际坐标位置。颜色用于区分坐标、权重、采样、法线、遮罩和材质属性链路。</p>
+        </div>
+        
+        <div class="tabs">
+            <input type="radio" name="diagram" id="tab-function" checked>
+            <label for="tab-function">三面映射函数内部</label>
+            
+            <input type="radio" name="diagram" id="tab-master">
+            <label for="tab-master">母材质三层混合</label>
+        </div>
+        
+        <div class="diagram-container diagram-function">
+            <svg viewBox="0 0 1150 800" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                        <polygon points="0 0, 6 3, 0 6" fill="#6f85aa" opacity="0.88"/>
+                    </marker>
+                </defs>
+                
+                <!-- Background group labels -->
+                <text class="group-label" x="50" y="30">输入坐标</text>
+                <text class="group-label" x="350" y="30">三次采样</text>
+                <text class="group-label" x="700" y="30">权重计算</text>
+                <text class="group-label" x="950" y="30">加权混合输出</text>
+                
+                <!-- Input Position Node -->
+                <g class="node" transform="translate(50, 60)">
+                    <rect width="120" height="80" rx="10"/>
+                    <rect class="head" width="120" height="24" rx="10"/>
+                    <text x="60" y="16" text-anchor="middle">World Position</text>
+                    <text class="small" x="100" y="50" text-anchor="end">xyz</text>
+                    <circle class="pin" cx="115" cy="46" r="4"/>
+                </g>
+                
+                <!-- Component Mask X (P.yz) -->
+                <g class="node" transform="translate(50, 180)">
+                    <rect width="120" height="80" rx="10"/>
+                    <rect class="head" width="120" height="24" rx="10"/>
+                    <text x="60" y="16" text-anchor="middle">ComponentMask</text>
+                    <text class="small" x="20" y="50">xyz</text>
+                    <circle class="pin" cx="5" cy="46" r="4"/>
+                    <text class="small" x="100" y="50" text-anchor="end">G B</text>
+                    <circle class="pin" cx="115" cy="46" r="4"/>
+                </g>
+                
+                <!-- Component Mask Y (P.xz) -->
+                <g class="node" transform="translate(50, 300)">
+                    <rect width="120" height="80" rx="10"/>
+                    <rect class="head" width="120" height="24" rx="10"/>
+                    <text x="60" y="16" text-anchor="middle">ComponentMask</text>
+                    <text class="small" x="20" y="50">xyz</text>
+                    <circle class="pin" cx="5" cy="46" r="4"/>
+                    <text class="small" x="100" y="50" text-anchor="end">R B</text>
+                    <circle class="pin" cx="115" cy="46" r="4"/>
+                </g>
+                
+                <!-- Component Mask Z (P.xy) -->
+                <g class="node" transform="translate(50, 420)">
+                    <rect width="120" height="80" rx="10"/>
+                    <rect class="head" width="120" height="24" rx="10"/>
+                    <text x="60" y="16" text-anchor="middle">ComponentMask</text>
+                    <text class="small" x="20" y="50">xyz</text>
+                    <circle class="pin" cx="5" cy="46" r="4"/>
+                    <text class="small" x="100" y="50" text-anchor="end">R G</text>
+                    <circle class="pin" cx="115" cy="46" r="4"/>
+                </g>
+                
+                <!-- Texture Sample X -->
+                <g class="node" transform="translate(250, 180)">
+                    <rect width="150" height="80" rx="10"/>
+                    <rect class="head" width="150" height="24" rx="10"/>
+                    <text x="75" y="16" text-anchor="middle">Texture Sample</text>
+                    <text class="small" x="20" y="50">UV</text>
+                    <circle class="pin" cx="5" cy="46" r="4"/>
+                    <text class="small" x="130" y="50" text-anchor="end">RGB</text>
+                    <circle class="pin" cx="145" cy="46" r="4"/>
+                </g>
+                
+                <!-- Texture Sample Y -->
+                <g class="node" transform="translate(250, 300)">
+                    <rect width="150" height="80" rx="10"/>
+                    <rect class="head" width="150" height="24" rx="10"/>
+                    <text x="75" y="16" text-anchor="middle">Texture Sample</text>
+                    <text class="small" x="20" y="50">UV</text>
+                    <circle class="pin" cx="5" cy="46" r="4"/>
+                    <text class="small" x="130" y="50" text-anchor="end">RGB</text>
+                    <circle class="pin" cx="145" cy="46" r="4"/>
+                </g>
+                
+                <!-- Texture Sample Z -->
+                <g class="node" transform="translate(250, 420)">
+                    <rect width="150" height="80" rx="10"/>
+                    <rect class="head" width="150" height="24" rx="10"/>
+                    <text x="75" y="16" text-anchor="middle">Texture Sample</text>
+                    <text class="small" x="20" y="50">UV</text>
+                    <circle class="pin" cx="5" cy="46" r="4"/>
+                    <text class="small" x="130" y="50" text-anchor="end">RGB</text>
+                    <circle class="pin" cx="145" cy="46" r="4"/>
+                </g>
+                
+                <!-- World Normal -->
+                <g class="node" transform="translate(480, 60)">
+                    <rect width="120" height="80" rx="10"/>
+                    <rect class="head" width="120" height="24" rx="10"/>
+                    <text x="60" y="16" text-anchor="middle">World Normal</text>
+                    <text class="small" x="100" y="50" text-anchor="end">xyz</text>
+                    <circle class="pin" cx="115" cy="46" r="4"/>
+                </g>
+                
+                <!-- Abs (for weight calculation) -->
+                <g class="node" transform="translate(680, 80)">
+                    <rect width="100" height="70" rx="10"/>
+                    <rect class="head" width="100" height="24" rx="10"/>
+                    <text x="50" y="16" text-anchor="middle">Abs</text>
+                    <text class="small" x="20" y="46">xyz</text>
+                    <circle class="pin" cx="5" cy="42" r="4"/>
+                    <text class="small" x="80" y="46" text-anchor="end">out</text>
+                    <circle class="pin" cx="95" cy="42" r="4"/>
+                </g>
+                
+                <!-- Power (sharpness control) -->
+                <g class="node" transform="translate(680, 180)">
+                    <rect width="100" height="90" rx="10"/>
+                    <rect class="head" width="100" height="24" rx="10"/>
+                    <text x="50" y="16" text-anchor="middle">Power</text>
+                    <text class="small" x="20" y="46">Base</text>
+                    <circle class="pin" cx="5" cy="42" r="4"/>
+                    <text class="small" x="20" y="66">Exp</text>
+                    <circle class="pin" cx="5" cy="62" r="4"/>
+                    <text class="small" x="80" y="56" text-anchor="end">out</text>
+                    <circle class="pin" cx="95" cy="52" r="4"/>
+                </g>
+                
+                <!-- Normalize (weight normalization) -->
+                <g class="node" transform="translate(680, 300)">
+                    <rect width="100" height="70" rx="10"/>
+                    <rect class="head" width="100" height="24" rx="10"/>
+                    <text x="50" y="16" text-anchor="middle">Normalize</text>
+                    <text class="small" x="20" y="46">xyz</text>
+                    <circle class="pin" cx="5" cy="42" r="4"/>
+                    <text class="small" x="80" y="46" text-anchor="end">out</text>
+                    <circle class="pin" cx="95" cy="42" r="4"/>
+                </g>
+                
+                <!-- Component Mask Wx -->
+                <g class="node" transform="translate(680, 400)">
+                    <rect width="100" height="70" rx="10"/>
+                    <rect class="head" width="100" height="24" rx="10"/>
+                    <text x="50" y="16" text-anchor="middle">Mask</text>
+                    <text class="small" x="20" y="46">xyz</text>
+                    <circle class="pin" cx="5" cy="42" r="4"/>
+                    <text class="small" x="80" y="46" text-anchor="end">R</text>
+                    <circle class="pin" cx="95" cy="42" r="4"/>
+                </g>
+                
+                <!-- Component Mask Wy -->
+                <g class="node" transform="translate(680, 500)">
+                    <rect width="100" height="70" rx="10"/>
+                    <rect class="head" width="100" height="24" rx="10"/>
+                    <text x="50" y="16" text-anchor="middle">Mask</text>
+                    <text class="small" x="20" y="46">xyz</text>
+                    <circle class="pin" cx="5" cy="42" r="4"/>
+                    <text class="small" x="80" y="46" text-anchor="end">G</text>
+                    <circle class="pin" cx="95" cy="42" r="4"/>
+                </g>
+                
+                <!-- Component Mask Wz -->
+                <g class="node" transform="translate(680, 600)">
+                    <rect width="100" height="70" rx="10"/>
+                    <rect class="head" width="100" height="24" rx="10"/>
+                    <text x="50" y="16" text-anchor="middle">Mask</text>
+                    <text class="small" x="20" y="46">xyz</text>
+                    <circle class="pin" cx="5" cy="42" r="4"/>
+                    <text class="small" x="80" y="46" text-anchor="end">B</text>
+                    <circle class="pin" cx="95" cy="42" r="4"/>
+                </g>
+                
+                <!-- Multiply X (Sample * Weight) -->
+                <g class="node" transform="translate(850, 180)">
+                    <rect width="100" height="90" rx="10"/>
+                    <rect class="head" width="100" height="24" rx="10"/>
+                    <text x="50" y="16" text-anchor="middle">Multiply</text>
+                    <text class="small" x="20" y="46">A</text>
+                    <circle class="pin" cx="5" cy="42" r="4"/>
+                    <text class="small" x="20" y="66">B</text>
+                    <circle class="pin" cx="5" cy="62" r="4"/>
+                    <text class="small" x="80" y="56" text-anchor="end">out</text>
+                    <circle class="pin" cx="95" cy="52" r="4"/>
+                </g>
+                
+                <!-- Multiply Y -->
+                <g class="node" transform="translate(850, 300)">
+                    <rect width="100" height="90" rx="10"/>
+                    <rect class="head" width="100" height="24" rx="10"/>
+                    <text x="50" y="16" text-anchor="middle">Multiply</text>
+                    <text class="small" x="20" y="46">A</text>
+                    <circle class="pin" cx="5" cy="42" r="4"/>
+                    <text class="small" x="20" y="66">B</text>
+                    <circle class="pin" cx="5" cy="62" r="4"/>
+                    <text class="small" x="80" y="56" text-anchor="end">out</text>
+                    <circle class="pin" cx="95" cy="52" r="4"/>
+                </g>
+                
+                <!-- Multiply Z -->
+                <g class="node" transform="translate(850, 420)">
+                    <rect width="100" height="90" rx="10"/>
+                    <rect class="head" width="100" height="24" rx="10"/>
+                    <text x="50" y="16" text-anchor="middle">Multiply</text>
+                    <text class="small" x="20" y="46">A</text>
+                    <circle class="pin" cx="5" cy="42" r="4"/>
+                    <text class="small" x="20" y="66">B</text>
+                    <circle class="pin" cx="5" cy="62" r="4"/>
+                    <text class="small" x="80" y="56" text-anchor="end">out</text>
+                    <circle class="pin" cx="95" cy="52" r="4"/>
+                </g>
+                
+                <!-- Add (final blend) -->
+                <g class="node" transform="translate(1000, 300)">
+                    <rect width="100" height="110" rx="10"/>
+                    <rect class="head" width="100" height="24" rx="10"/>
+                    <text x="50" y="16" text-anchor="middle">Add</text>
+                    <text class="small" x="20" y="46">A</text>
+                    <circle class="pin" cx="5" cy="42" r="4"/>
+                    <text class="small" x="20" y="66">B</text>
+                    <circle class="pin" cx="5" cy="62" r="4"/>
+                    <text class="small" x="20" y="86">C</text>
+                    <circle class="pin" cx="5" cy="82" r="4"/>
+                    <text class="small" x="80" y="66" text-anchor="end">Result</text>
+                    <circle class="pin" cx="95" cy="62" r="4"/>
+                </g>
+                
+                <!-- Wires: Position to ComponentMasks -->
+                <path class="wire coord" d="M 165,106 L 180,106 L 180,226 L 55,226" marker-end="url(#arrowhead)"/>
+                <path class="wire coord" d="M 180,226 L 180,346 L 55,346" marker-end="url(#arrowhead)"/>
+                <path class="wire coord" d="M 180,226 L 180,466 L 55,466" marker-end="url(#arrowhead)"/>
+                
+                <!-- Wires: ComponentMasks to Texture Samples -->
+                <path class="wire coord" d="M 165,226 L 255,226" marker-end="url(#arrowhead)"/>
+                <path class="wire coord" d="M 165,346 L 255,346" marker-end="url(#arrowhead)"/>
+                <path class="wire coord" d="M 165,466 L 255,466" marker-end="url(#arrowhead)"/>
+                
+                <!-- Wires: Normal to weight calculation -->
+                <path class="wire weight" d="M 595,106 L 620,106 L 620,122 L 685,122" marker-end="url(#arrowhead)"/>
+                
+                <!-- Wires: Abs to Power to Normalize -->
+                <path class="wire weight" d="M 775,122 L 800,122 L 800,222 L 685,222" marker-end="url(#arrowhead)"/>
+                <path class="wire weight" d="M 775,232 L 800,232 L 800,342 L 685,342" marker-end="url(#arrowhead)"/>
+                
+                <!-- Wires: Normalize to Component Masks for weights -->
+                <path class="wire weight" d="M 775,342 L 800,342 L 800,442 L 685,442" marker-end="url(#arrowhead)"/>
+                <path class="wire weight" d="M 800,442 L 800,542 L 685,542" marker-end="url(#arrowhead)"/>
+                <path class="wire weight" d="M 800,542 L 800,642 L 685,642" marker-end="url(#arrowhead)"/>
+                
+                <!-- Wires: Texture Samples to Multiply -->
+                <path class="wire sample" d="M 395,226 L 420,226 L 420,222 L 855,222" marker-end="url(#arrowhead)"/>
+                <path class="wire sample" d="M 395,346 L 420,346 L 420,342 L 855,342" marker-end="url(#arrowhead)"/>
+                <path class="wire sample" d="M 395,466 L 420,466 L 420,462 L 855,462" marker-end="url(#arrowhead)"/>
+                
+                <!-- Wires: Weights to Multiply -->
+                <path class="wire weight" d="M 775,442 L 820,442 L 820,242 L 855,242" marker-end="url(#arrowhead)"/>
+                <path class="wire weight" d="M 775,542 L 830,542 L 830,362 L 855,362" marker-end="url(#arrowhead)"/>
+                <path class="wire weight" d="M 775,642 L 840,642 L 840,482 L 855,482" marker-end="url(#arrowhead)"/>
+                
+                <!-- Wires: Multiply to Add -->
+                <path class="wire sample" d="M 945,232 L 970,232 L 970,342 L 1005,342" marker-end="url(#arrowhead)"/>
+                <path class="wire sample" d="M 945,352 L 970,352 L 970,362 L 1005,362" marker-end="url(#arrowhead)"/>
+                <path class="wire sample" d="M 945,472 L 970,472 L 970,382 L 1005,382" marker-end="url(#arrowhead)"/>
+            </svg>
+        </div>
+        
+        <div class="diagram-container diagram-master">
+            <svg viewBox="0 0 1150 700" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <marker id="arrowhead2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                        <polygon points="0 0, 6 3, 0 6" fill="#6f85aa" opacity="0.88"/>
+                    </marker>
+                </defs>
+                
+                <!-- Background labels -->
+                <text class="group-label" x="50" y="30">底层材质</text>
+                <text class="group-label" x="350" y="30">中层材质</text>
+                <text class="group-label" x="650" y="30">顶层材质</text>
+                <text class="group-label" x="950" y="30">输出</text>
+                
+                <!-- Layer 1: Base Material -->
+                <g class="node" transform="translate(50, 100)">
+                    <rect width="180" height="120" rx="10"/>
+                    <rect class="head" width="180" height="24" rx="10"/>
+                    <text x="90" y="16" text-anchor="middle">TriplanarFunction</text>
+                    <text class="small" x="160" y="50" text-anchor="end">BaseColor</text>
+                    <circle class="pin" cx="175" cy="46" r="4"/>
+                    <text class="small" x="160" y="70" text-anchor="end">Roughness</text>
+                    <circle class="pin" cx="175" cy="66" r="4"/>
+                    <text class="small" x="160" y="90" text-anchor="end">Normal</text>
+                    <circle class="pin" cx="175" cy="86" r="4"/>
+                </g>
+                
+                <!-- Mask for Layer 1 -->
+                <g class="node" transform="translate(50, 250)">
+                    <rect width="180" height="80" rx="10"/>
+                    <rect class="head" width="180" height="24" rx="10"/>
+                    <text x="90" y="16" text-anchor="middle">HeightMask</text>
+                    <text class="small" x="160" y="50" text-anchor="end">Alpha</text>
+                    <circle class="pin" cx="175" cy="46" r="4"/>
+                </g>
+                
+                <!-- Layer 2: Mid Material -->
+                <g class="node" transform="translate(350, 100)">
+                    <rect width="180" height="120" rx="10"/>
+                    <rect class="head" width="180" height="24" rx="10"/>
+                    <text x="90" y="16" text-anchor="middle">TriplanarFunction</text>
+                    <text class="small" x="160" y="50" text-anchor="end">BaseColor</text>
+                    <circle class="pin" cx="175" cy="46" r="4"/>
+                    <text class="small" x="160" y="70" text-anchor="end">Roughness</text>
+                    <circle class="pin" cx="175" cy="66" r="4"/>
+                    <text class="small" x="160" y="90" text-anchor="end">Normal</text>
+                    <circle class="pin" cx="175" cy="86" r="4"/>
+                </g>
+                
+                <!-- Mask for Layer 2 -->
+                <g class="node" transform="translate(350, 250)">
+                    <rect width="180" height="80" rx="10"/>
+                    <rect class="head" width="180" height="24" rx="10"/>
+                    <text x="90" y="16" text-anchor="middle">HeightMask</text>
+                    <text class="small" x="160" y="50" text-anchor="end">Alpha</text>
+                    <circle class="pin" cx="175" cy="46" r="4"/>
+                </g>
+                
+                <!-- Layer 3: Top Material -->
+                <g class="node" transform="translate(650, 100)">
+                    <rect width="180" height="120" rx="10"/>
+                    <rect class="head" width="180" height="24" rx="10"/>
+                    <text x="90" y="16" text-anchor="middle">TriplanarFunction</text>
+                    <text class="small" x="160" y="50" text-anchor="end">BaseColor</text>
+                    <circle class="pin" cx="175" cy="46" r="4"/>
+                    <text class="small" x="160" y="70" text-anchor="end">Roughness</text>
+                    <circle class="pin" cx="175" cy="66" r="4"/>
+                    <text class="small" x="160" y="90" text-anchor="end">Normal</text>
+                    <circle class="pin" cx="175" cy="86" r="4"/>
+                </g>
+                
+                <!-- Mask for Layer 3 -->
+                <g class="node" transform="translate(650, 250)">
+                    <rect width="180" height="80" rx="10"/>
+                    <rect class="head" width="180" height="24" rx="10"/>
+                    <text x="90" y="16" text-anchor="middle">HeightMask</text>
+                    <text class="small" x="160" y="50" text-anchor="end">Alpha</text>
+                    <circle class="pin" cx="175" cy="46" r="4"/>
+                </g>
+                
+                <!-- MatLayerBlend 1->2 -->
+                <g class="node" transform="translate(280, 380)">
+                    <rect width="160" height="140" rx="10"/>
+                    <rect class="head" width="160" height="24" rx="10"/>
+                    <text x="80" y="16" text-anchor="middle">MatLayerBlend</text>
+                    <text class="small" x="20" y="46">Base</text>
+                    <circle class="pin" cx="5" cy="42" r="4"/>
+                    <text class="small" x="20" y="66">Top</text>
+                    <circle class="pin" cx="5" cy="62" r="4"/>
+                    <text class="small" x="20" y="86">Alpha</text>
+                    <circle class="pin" cx="5" cy="82" r="4"/>
+                    <text class="small" x="140" y="66" text-anchor="end">Result</text>
+                    <circle class="pin" cx="155" cy="62" r="4"/>
+                </g>
+                
+                <!-- MatLayerBlend (1+2)->3 -->
+                <g class="node" transform="translate(620, 450)">
+                    <rect width="160" height="140" rx="10"/>
+                    <rect class="head" width="160" height="24" rx="10"/>
+                    <text x="80" y="16" text-anchor="middle">MatLayerBlend</text>
+                    <text class="small" x="20" y="46">Base</text>
+                    <circle class="pin" cx="5" cy="42" r="4"/>
+                    <text class="small" x="20" y="66">Top</text>
+                    <circle class="pin" cx="5" cy="62" r="4"/>
+                    <text class="small" x="20" y="86">Alpha</text>
+                    <circle class="pin" cx="5" cy="82" r="4"/>
+                    <text class="small" x="140" y="66" text-anchor="end">Result</text>
+                    <circle class="pin" cx="155" cy="62" r="4"/>
+                </g>
+                
+                <!-- Final Output -->
+                <g class="node" transform="translate(950, 450)">
+                    <rect width="140" height="140" rx="10"/>
+                    <rect class="head" width="140" height="24" rx="10"/>
+                    <text x="70" y="16" text-anchor="middle">Material Output</text>
+                    <text class="small" x="20" y="46">BaseColor</text>
+                    <circle class="pin" cx="5" cy="42" r="4"/>
+                    <text class="small" x="20" y="66">Roughness</text>
+                    <circle class="pin" cx="5" cy="62" r="4"/>
+                    <text class="small" x="20" y="86">Normal</text>
+                    <circle class="pin" cx="5" cy="82" r="4"/>
+                </g>
+                
+                <!-- Wires: Layer materials to blends -->
+                <path class="wire attr" d="M 225,160 L 240,160 L 240,422 L 285,422" marker-end="url(#arrowhead2)"/>
+                <path class="wire attr" d="M 525,160 L 540,160 L 540,442 L 285,442" marker-end="url(#arrowhead2)"/>
+                <path class="wire mask" d="M 225,296 L 250,296 L 250,462 L 285,462" marker-end="url(#arrowhead2)"/>
+                
+                <path class="wire attr" d="M 435,442 L 500,442 L 500,492 L 625,492" marker-end="url(#arrowhead2)"/>
+                <path class="wire attr" d="M 825,186 L 850,186 L 850,512 L 625,512" marker-end="url(#arrowhead2)"/>
+                <path class="wire mask" d="M 825,296 L 870,296 L 870,532 L 625,532" marker-end="url(#arrowhead2)"/>
+                
+                <!-- Wires: Final blend to output -->
+                <path class="wire attr" d="M 775,512 L 850,512 L 850,492 L 955,492" marker-end="url(#arrowhead2)"/>
+                <path class="wire attr" d="M 850,492 L 850,512 L 955,512" marker-end="url(#arrowhead2)"/>
+                <path class="wire attr" d="M 850,512 L 850,532 L 955,532" marker-end="url(#arrowhead2)"/>
+            </svg>
+        </div>
+    </div>
+</body>
+</html>
