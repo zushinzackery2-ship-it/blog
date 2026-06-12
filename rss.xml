@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Shrei</title><description>Reverse engineering notes</description><link>https://zushinzackery2-ship-it.github.io/blog/</link><templateTheme>Firefly</templateTheme><templateThemeVersion>6.10.9</templateThemeVersion><templateThemeUrl>https://github.com/zushinzackery2-ship-it</templateThemeUrl><lastBuildDate>2026年6月11日 04:38:09</lastBuildDate><item><title>Unity IL2CPP 启动原理：从 UnityPlayer 到 GameAssembly 的初始化序列</title><link>https://zushinzackery2-ship-it.github.io/blog/posts/01-il2cpp-init-deep-dive/</link><guid isPermaLink="true">https://zushinzackery2-ship-it.github.io/blog/posts/01-il2cpp-init-deep-dive/</guid><description>双击运行 Unity 游戏时，引擎内部经历了一系列初始化序列，才能把 C# 代码真正运转起来。本文基于 Unity 2022.3.62 IL2CPP 产物的逆向分析，从 UnityPlayer 动态加载 GameAssembly 讲到 MetadataCache、Registration 表、类型索引、方法查询和内存布局。</description><pubDate>Tue, 09 Jun 2026 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;&lt;p&gt;双击运行 Unity 游戏时，引擎内部经历的不只是“加载 GameAssembly.dll，然后调用 il2cpp_init”。UnityPlayer 负责把脚本后端接进引擎主循环；GameAssembly 负责把 AOT 代码、global-metadata.dat 和 registration 表组合成可查询、可调用的运行时世界。本文基于 Unity 2022.3.62 IL2CPP 产物的逆向观察，按启动序列拆开这条链路。&lt;/p&gt;&lt;/blockquote&gt;
+<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Shrei</title><description>Reverse engineering notes</description><link>https://zushinzackery2-ship-it.github.io/blog/</link><templateTheme>Firefly</templateTheme><templateThemeVersion>6.10.9</templateThemeVersion><templateThemeUrl>https://github.com/zushinzackery2-ship-it</templateThemeUrl><lastBuildDate>2026年6月12日 13:15:25</lastBuildDate><item><title>Unity IL2CPP 启动原理：从 UnityPlayer 到 GameAssembly 的初始化序列</title><link>https://zushinzackery2-ship-it.github.io/blog/posts/01-il2cpp-init-deep-dive/</link><guid isPermaLink="true">https://zushinzackery2-ship-it.github.io/blog/posts/01-il2cpp-init-deep-dive/</guid><description>双击运行 Unity 游戏时，引擎内部经历了一系列初始化序列，才能把 C# 代码真正运转起来。本文基于 Unity 2022.3.62 IL2CPP 产物的逆向分析，从 UnityPlayer 动态加载 GameAssembly 讲到 MetadataCache、Registration 表、类型索引、方法查询和内存布局。</description><pubDate>Tue, 09 Jun 2026 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;&lt;p&gt;双击运行 Unity 游戏时，引擎内部经历的不只是“加载 GameAssembly.dll，然后调用 il2cpp_init”。UnityPlayer 负责把脚本后端接进引擎主循环；GameAssembly 负责把 AOT 代码、global-metadata.dat 和 registration 表组合成可查询、可调用的运行时世界。本文基于 Unity 2022.3.62 IL2CPP 产物的逆向观察，按启动序列拆开这条链路。&lt;/p&gt;&lt;/blockquote&gt;
 &lt;hr /&gt;
 &lt;section&gt;&lt;h2&gt;先说结论&lt;a href=&quot;#先说结论&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;UnityPlayer 在运行时动态加载 &lt;code&gt;GameAssembly.dll&lt;/code&gt;，再通过 &lt;code&gt;LoadDynamicLibrary + LookupSymbol&lt;/code&gt; 批量绑定 &lt;code&gt;il2cpp_*&lt;/code&gt; API。这个设计让 UnityPlayer 保持脚本后端无关：它只知道自己要调用 &lt;code&gt;il2cpp_init&lt;/code&gt;、&lt;code&gt;il2cpp_class_from_name&lt;/code&gt;、&lt;code&gt;il2cpp_runtime_invoke&lt;/code&gt; 这类 C API，不需要在导入表里硬绑定 GameAssembly。&lt;/p&gt;&lt;p&gt;GameAssembly 的核心任务是把三类数据接起来：&lt;/p&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;AOT native code&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;来自 GameAssembly.dll 里的函数和方法指针表&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;
 &lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;static metadata&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;5&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;来自 global-metadata.dat，记录类型、字段、方法、字符串、assembly 关系&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;6&lt;/div&gt;&lt;/div&gt;&lt;div&gt;
@@ -1390,7 +1390,297 @@ detail=full
 &lt;/ul&gt;&lt;p&gt;Thin Facade 在两个维度都把控制权交给 AI：&lt;/p&gt;&lt;ul&gt;
 &lt;li&gt;工具定义：AI 决定查不查某个 operation 的 schema&lt;/li&gt;
 &lt;li&gt;返回数据：AI 决定要摘要还是完整数据，大数据用 artifact&lt;/li&gt;
-&lt;/ul&gt;&lt;p&gt;这不是优化工具定义大小或压缩返回数据，而是&lt;strong&gt;改变控制权的归属&lt;/strong&gt;。&lt;/p&gt;&lt;hr /&gt;&lt;p&gt;&lt;em&gt;实践口径：来自 MCP 桥接工具面的架构抽象；重点是 Thin Facade、operation registry、response mode 和 artifact 边界，不绑定具体项目。&lt;/em&gt;&lt;/p&gt;&lt;/section&gt;</content:encoded></item><item><title>UE 三面映射材质：坐标投影、方向权重与材质层组织</title><link>https://zushinzackery2-ship-it.github.io/blog/posts/15-ue-triplanar-material/</link><guid isPermaLink="true">https://zushinzackery2-ship-it.github.io/blog/posts/15-ue-triplanar-material/</guid><description>三面映射不是一个单独的贴图技巧，而是一组围绕空间坐标、法线权重、纹理采样、法线重定向和材质层混合展开的材质结构。本文按笔记形式整理 UE 三面映射材质的节点职责和组合数学。</description><pubDate>Mon, 15 Jun 2026 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;&lt;p&gt;三面映射的价值不在于省掉 UV，而在于把贴图坐标从模型 UV 转移到空间坐标。材质不再依赖网格自身展开，而是从 X、Y、Z 三个方向投影纹理，再用表面法线决定三个方向的混合比例。&lt;/p&gt;&lt;/blockquote&gt;
+&lt;/ul&gt;&lt;p&gt;这不是优化工具定义大小或压缩返回数据，而是&lt;strong&gt;改变控制权的归属&lt;/strong&gt;。&lt;/p&gt;&lt;hr /&gt;&lt;p&gt;&lt;em&gt;实践口径：来自 MCP 桥接工具面的架构抽象；重点是 Thin Facade、operation registry、response mode 和 artifact 边界，不绑定具体项目。&lt;/em&gt;&lt;/p&gt;&lt;/section&gt;</content:encoded></item><item><title>IL2CPP Internal Call 解析链路：从 generated wrapper 到 UnityPlayer native</title><link>https://zushinzackery2-ship-it.github.io/blog/posts/16-il2cpp-internal-call-resolution/</link><guid isPermaLink="true">https://zushinzackery2-ship-it.github.io/blog/posts/16-il2cpp-internal-call-resolution/</guid><description>IL2CPP 的部分 UnityEngine API 不在 GameAssembly 中直接实现，而是通过 internal call 名称解析到 UnityPlayer 的 native 函数。本文以 Camera.get_main 为样本，拆开 generated wrapper、惰性缓存、InternalCalls::Resolve、UnityPlayer 注册表和真实 native 落点之间的完整链路。</description><pubDate>Tue, 16 Jun 2026 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;&lt;p&gt;&lt;code&gt;Camera.main&lt;/code&gt; 这类 UnityEngine API 看起来像普通 managed 属性，IL2CPP 产物里却不是一条直接调用链。generated wrapper 先按 internal call 名称解析 native 函数，再把解析结果缓存起来。后续调用跳过解析，直接进入 UnityPlayer 注册的 native 实现。&lt;/p&gt;&lt;/blockquote&gt;
+&lt;hr /&gt;
+&lt;section&gt;&lt;h2&gt;先说结论&lt;a href=&quot;#先说结论&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;IL2CPP 的 internal call 可以理解为一套 &lt;strong&gt;managed API 到 engine native 函数的注册与解析机制&lt;/strong&gt;。它解决的问题不是 metadata 解析，也不是普通 C# 方法的 AOT method pointer 查找，而是把一部分运行时需要引擎实现的 API，从 &lt;code&gt;GameAssembly.dll&lt;/code&gt; 转接到 &lt;code&gt;UnityPlayer.dll&lt;/code&gt;。&lt;/p&gt;&lt;p&gt;以当前样本中的 &lt;code&gt;UnityEngine.Camera.get_main&lt;/code&gt; 为例，调用链不是直接从 generated wrapper 跳到 &lt;code&gt;FindMainCamera&lt;/code&gt;，而是先经过 internal call 解析：&lt;/p&gt;
+
+
+generated wrapper
+Camera_get_main
+
+icall cache
+_il2cpp_icall_func
+
+resolve icall
+InternalCalls::Resolve
+
+native ptr
+UnityPlayer
+
+首次调用
+cache miss → resolve → write back
+
+后续调用
+cache hit → jmp native ptr
+
+
+
+
+
+&lt;p&gt;这条链路里有两个容易混淆的点。&lt;/p&gt;&lt;p&gt;第一，缓存发生在 generated wrapper 层。&lt;code&gt;_il2cpp_icall_func&lt;/code&gt; 缓存的是 &lt;strong&gt;UnityPlayer native 函数指针&lt;/strong&gt;，不是 &lt;code&gt;Camera&lt;/code&gt; 对象，也不是 &lt;code&gt;FindMainCamera&lt;/code&gt; 的结果。&lt;/p&gt;&lt;p&gt;第二，&lt;code&gt;InternalCalls::Resolve&lt;/code&gt; 解决的是 &lt;strong&gt;名称到函数指针&lt;/strong&gt; 的映射。它会查 &lt;code&gt;s_InternalCalls&lt;/code&gt;，必要时把 &lt;code&gt;UnityEngine.Camera::get_main()&lt;/code&gt; 裁剪成 &lt;code&gt;UnityEngine.Camera::get_main&lt;/code&gt; 再查一次。真正把这个名字注册进表里的，是 UnityPlayer 启动阶段的 &lt;code&gt;RegisterModuleICalls_Core&lt;/code&gt;。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;1. Internal Call 在 IL2CPP 里的位置&lt;a href=&quot;#1-internal-call-在-il2cpp-里的位置&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;IL2CPP 里并不是所有 managed 方法都只靠 &lt;code&gt;CodeRegistration&lt;/code&gt; 里的 method pointer 解决。一部分 UnityEngine API 的真实逻辑在引擎 native 层，例如场景、对象、相机、物理、渲染等模块。对这些 API，GameAssembly 侧更像是稳定入口和调用外观，UnityPlayer 侧才是具体实现。&lt;/p&gt;&lt;p&gt;可以把几类数据分开看：&lt;/p&gt;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;机制&lt;/th&gt;&lt;th&gt;主要作用&lt;/th&gt;&lt;th&gt;典型数据&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;metadata&lt;/td&gt;&lt;td&gt;提供类型、字段、方法、字符串等静态语义&lt;/td&gt;&lt;td&gt;&lt;code&gt;global-metadata.dat&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;registration&lt;/td&gt;&lt;td&gt;提供 AOT 方法地址、字段偏移、类型布局等运行时映射&lt;/td&gt;&lt;td&gt;&lt;code&gt;CodeRegistration&lt;/code&gt; / &lt;code&gt;MetadataRegistration&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;internal call&lt;/td&gt;&lt;td&gt;把特定 managed API 绑定到引擎 native 函数&lt;/td&gt;&lt;td&gt;&lt;code&gt;s_InternalCalls&lt;/code&gt; name/function 表&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;p&gt;internal call 不替代 metadata，也不替代 registration。它补的是另一条桥：&lt;strong&gt;当某个 managed API 的实现属于引擎 native 层时，IL2CPP 通过字符串名找到对应 native 函数，再由 wrapper 跳过去。&lt;/strong&gt;&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;2. generated wrapper 只保存一个惰性入口&lt;a href=&quot;#2-generated-wrapper-只保存一个惰性入口&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;当前样本里，PDB 给出的 wrapper 是 &lt;code&gt;Camera_get_main_m52C992F18E05355ABB9EEB64A4BF2215E12762DF&lt;/code&gt;。这个函数很短，核心行为就是读缓存、必要时解析、写回缓存、跳转。&lt;/p&gt;&lt;p&gt;关键指令窗口如下：&lt;/p&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;mov rax, qword ptr [rip + 0x8d3c15]   ; read _il2cpp_icall_func&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;test rax, rax&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;jne  resolved&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;lea rcx, [rip + 0x3200d9]             ; &quot;UnityEngine.Camera::get_main()&quot;&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;5&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;call il2cpp_codegen_resolve_icall&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;6&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;mov qword ptr [rip + 0x8d3bfd], rax   ; write _il2cpp_icall_func&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;7&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;resolved:&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;8&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;jmp rax&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;这段逻辑对应两个状态：&lt;/p&gt;
+
+
+未解析
+cache = 0
+
+解析 native 函数
+resolve name → function ptr
+
+已解析
+cache = native ptr
+
+
+
+后续调用从同一 wrapper 读到非零函数指针，直接 jmp
+&lt;p&gt;这里的 &lt;code&gt;_il2cpp_icall_func&lt;/code&gt; 是 wrapper 自己的静态缓存槽。它初始为 0，第一次解析成功后写入 &lt;code&gt;Camera_Get_Custom_PropMain&lt;/code&gt; 的地址。解析失败不会写入空值，而是沿 &lt;code&gt;il2cpp_codegen_resolve_icall&lt;/code&gt; 的失败路径抛出异常。&lt;/p&gt;&lt;p&gt;这个状态机是 internal call wrapper 的关键：&lt;strong&gt;解析只为找到 native 入口，真实业务逻辑每次仍然会执行。&lt;/strong&gt; 对 &lt;code&gt;Camera.get_main&lt;/code&gt; 来说，后续调用跳过的是字符串解析，不是 &lt;code&gt;FindMainCamera&lt;/code&gt;。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;3. resolver 的职责是把名字变成函数指针&lt;a href=&quot;#3-resolver-的职责是把名字变成函数指针&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;&lt;code&gt;il2cpp_codegen_resolve_icall&lt;/code&gt; 是 wrapper 调用的解析入口。它保存传入的 internal call name，然后调用 &lt;code&gt;InternalCalls::Resolve&lt;/code&gt;。如果返回值非空，就把函数指针返回给 wrapper；如果返回值为空，则构造 &lt;code&gt;MissingMethodException&lt;/code&gt; 并抛出。&lt;/p&gt;&lt;p&gt;这一层的行为可以压缩成下面这张图：&lt;/p&gt;
+
+
+internal call name
+UnityEngine.Camera::get_main()
+
+InternalCalls::Resolve
+lookup s_InternalCalls
+
+success
+return native ptr
+
+failure
+MissingMethodException
+
+
+
+&lt;p&gt;因此 resolver 的边界很清楚：它不执行 &lt;code&gt;Camera.main&lt;/code&gt; 的业务语义，只负责把字符串名解析成 native 函数指针。业务语义要等 wrapper 拿到函数指针并跳进 UnityPlayer 后才发生。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;4. &lt;code&gt;InternalCalls::Resolve&lt;/code&gt; 支持名称归一&lt;a href=&quot;#4-internalcallsresolve-支持名称归一&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;当前样本里，wrapper 传给 resolver 的名字是：&lt;/p&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;UnityEngine.Camera::get_main()&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;但 UnityPlayer 注册表里的名字是：&lt;/p&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;UnityEngine.Camera::get_main&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;这两个字符串不完全一致。&lt;code&gt;InternalCalls::Resolve&lt;/code&gt; 的关键行为是：先用完整名字查 &lt;code&gt;s_InternalCalls&lt;/code&gt;，如果没有命中，再尝试找到 &lt;code&gt;(&lt;/code&gt;，裁剪出括号前的名字，再查一次。&lt;/p&gt;
+
+
+exact key
+UnityEngine.Camera::get_main()
+
+find &apos;(&apos;
+trim suffix
+
+normalized key
+UnityEngine.Camera::get_main
+
+s_InternalCalls
+map name → UnityPlayer native function pointer
+
+
+
+
+&lt;p&gt;这个细节让两个来源的命名差异能够对齐：generated wrapper 可以带 &lt;code&gt;()&lt;/code&gt;，UnityPlayer 注册表可以不带 &lt;code&gt;()&lt;/code&gt;。最终只要裁剪后的 key 命中，&lt;code&gt;Resolve&lt;/code&gt; 就能从树节点里取出 native 函数指针。&lt;/p&gt;&lt;p&gt;样本中的树节点布局也有互相印证的证据：&lt;code&gt;InternalCalls::Add&lt;/code&gt; 写入 native 函数指针的位置，和 &lt;code&gt;InternalCalls::Resolve&lt;/code&gt; 读取函数指针的位置一致，都是节点中的 value 区域。文章里不需要展开整个 &lt;code&gt;std::_Tree&lt;/code&gt; 布局，只要保留这个判断边界：&lt;code&gt;s_InternalCalls&lt;/code&gt; 可以抽象成 &lt;code&gt;name -&amp;gt; native ptr&lt;/code&gt; 的映射。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;5. UnityPlayer 负责批量注册 engine native 函数&lt;a href=&quot;#5-unityplayer-负责批量注册-engine-native-函数&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;&lt;code&gt;s_InternalCalls&lt;/code&gt; 不是凭空有数据。当前样本中，UnityPlayer 的 &lt;code&gt;RegisterModuleICalls_Core&lt;/code&gt; 会遍历 Core 模块的 internal call 表，把 name/function 对交给 &lt;code&gt;il2cpp_add_internal_call&lt;/code&gt;。GameAssembly 侧再通过 &lt;code&gt;InternalCalls::Add&lt;/code&gt; 写入 &lt;code&gt;s_InternalCalls&lt;/code&gt;。&lt;/p&gt;&lt;p&gt;对 &lt;code&gt;Camera.get_main&lt;/code&gt; 来说，Core 表里的关键槽位是 index &lt;code&gt;523&lt;/code&gt;：&lt;/p&gt;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;index&lt;/th&gt;&lt;th&gt;name&lt;/th&gt;&lt;th&gt;function&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;522&lt;/td&gt;&lt;td&gt;&lt;code&gt;UnityEngine.Camera::VerticalToHorizontalFieldOfView&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;Camera_CUSTOM_VerticalToHorizontalFieldOfView&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;523&lt;/td&gt;&lt;td&gt;&lt;code&gt;UnityEngine.Camera::get_main&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;Camera_Get_Custom_PropMain&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;524&lt;/td&gt;&lt;td&gt;&lt;code&gt;UnityEngine.Camera::get_current&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;Camera_Get_Custom_PropCurrent&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;525&lt;/td&gt;&lt;td&gt;&lt;code&gt;UnityEngine.Camera::get_scene_Injected&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;Camera_CUSTOM_get_scene_Injected&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;526&lt;/td&gt;&lt;td&gt;&lt;code&gt;UnityEngine.Camera::set_scene_Injected&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;Camera_CUSTOM_set_scene_Injected&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;p&gt;这说明 &lt;code&gt;Camera_Get_Custom_PropMain&lt;/code&gt; 不是靠字符串猜测出来的落点，而是 UnityPlayer 的注册表显式绑定出来的结果。&lt;/p&gt;
+
+
+UnityPlayer
+RegisterModuleICalls_Core
+
+names[523]
+Camera::get_main
+
+funcs[523]
+Camera_Get_Custom_PropMain
+
+il2cpp_add_internal_call
+name/function 写入 GameAssembly
+
+s_InternalCalls[name] = function
+后续 Resolve 从这里取 native ptr
+
+
+
+
+
+&lt;p&gt;这条注册链也解释了 internal call 的模块边界：UnityPlayer 知道引擎 native 函数在哪里；GameAssembly 通过 &lt;code&gt;il2cpp_add_internal_call&lt;/code&gt; 接收这些映射；generated wrapper 第一次执行时再按名字拿到对应指针。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;6. native 落点才承载 API 语义&lt;a href=&quot;#6-native-落点才承载-api-语义&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;&lt;code&gt;Camera.get_main&lt;/code&gt; 解析出的 native 函数是 &lt;code&gt;Camera_Get_Custom_PropMain&lt;/code&gt;。这个函数不是 resolver，也不是 cache 管理逻辑，而是真正的 UnityPlayer 侧实现。&lt;/p&gt;&lt;p&gt;它的核心行为很短：先调用 &lt;code&gt;FindMainCamera&lt;/code&gt;，如果找到 native &lt;code&gt;Camera*&lt;/code&gt;，再调用 &lt;code&gt;ScriptingWrapperFor&lt;/code&gt; 包装成脚本侧可见对象；如果没找到，则返回空对象。&lt;/p&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;call FindMainCamera&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;test rax, rax&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;je return_null&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;mov rdx, rax&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;5&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;call ScriptingWrapperFor&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;6&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;return wrapped_object&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;可以把这一段理解成 API 语义层：&lt;/p&gt;
+
+
+Camera_Get_Custom_PropMain
+UnityPlayer native
+
+FindMainCamera
+native Camera*
+
+ScriptingWrapperFor
+包装为脚本对象
+
+null path
+未找到主 Camera
+
+
+
+&lt;p&gt;这一步很重要：&lt;code&gt;Camera.main&lt;/code&gt; 每次调用仍然会进入 &lt;code&gt;Camera_Get_Custom_PropMain&lt;/code&gt;，仍然会执行 &lt;code&gt;FindMainCamera&lt;/code&gt;。前面的 &lt;code&gt;_il2cpp_icall_func&lt;/code&gt; 只缓存“应该跳到哪个 native 函数”，不缓存“当前主 Camera 是谁”。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;7. 逆向分析时的通用识别路径&lt;a href=&quot;#7-逆向分析时的通用识别路径&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;把 &lt;code&gt;Camera.get_main&lt;/code&gt; 抽象成通用路径后，分析其他 internal call 也可以按同一套顺序推进。&lt;/p&gt;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;阶段&lt;/th&gt;&lt;th&gt;观察对象&lt;/th&gt;&lt;th&gt;判断目标&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;wrapper&lt;/td&gt;&lt;td&gt;generated method 里的静态缓存槽&lt;/td&gt;&lt;td&gt;是否存在 cache miss → resolve → write back → jmp 模式&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;字符串&lt;/td&gt;&lt;td&gt;wrapper 传给 resolver 的 internal call name&lt;/td&gt;&lt;td&gt;完整名、括号形式、命名空间和方法名&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;resolver&lt;/td&gt;&lt;td&gt;&lt;code&gt;il2cpp_codegen_resolve_icall&lt;/code&gt; / &lt;code&gt;InternalCalls::Resolve&lt;/code&gt;&lt;/td&gt;&lt;td&gt;成功返回 native ptr，失败抛 MissingMethodException&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;注册表&lt;/td&gt;&lt;td&gt;&lt;code&gt;s_InternalCalls&lt;/code&gt;&lt;/td&gt;&lt;td&gt;name/function 是否被写入&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;UnityPlayer&lt;/td&gt;&lt;td&gt;&lt;code&gt;RegisterModuleICalls_*&lt;/code&gt;&lt;/td&gt;&lt;td&gt;哪个模块负责注册该 API&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;native 落点&lt;/td&gt;&lt;td&gt;UnityPlayer 函数&lt;/td&gt;&lt;td&gt;API 的真实业务语义&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;p&gt;这条路径的优先级也很明确：先证明 wrapper 的缓存和 resolver 调用，再证明 UnityPlayer 的注册项，最后解释 native 函数做了什么。不要反过来先看到一个名字相近的 UnityPlayer 函数就认定它是落点。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;证据边界&lt;a href=&quot;#证据边界&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;本文基于当前样本的 PE、PDB 与本地反汇编/表解析产物，不把地址写成跨版本稳定结论。关键样本点如下：&lt;/p&gt;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;对象&lt;/th&gt;&lt;th&gt;模块&lt;/th&gt;&lt;th&gt;当前样本 RVA&lt;/th&gt;&lt;th&gt;作用&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;Camera_get_main_m52C992F18E05355ABB9EEB64A4BF2215E12762DF&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;GameAssembly.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;0xf81f20&lt;/code&gt;&lt;/td&gt;&lt;td&gt;generated wrapper&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;_il2cpp_icall_func&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;GameAssembly.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;0x1855b40&lt;/code&gt;&lt;/td&gt;&lt;td&gt;wrapper 私有缓存槽&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;il2cpp_codegen_resolve_icall&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;GameAssembly.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;0x18f640&lt;/code&gt;&lt;/td&gt;&lt;td&gt;resolver wrapper&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;InternalCalls::Resolve&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;GameAssembly.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;0x1cba50&lt;/code&gt;&lt;/td&gt;&lt;td&gt;查 &lt;code&gt;s_InternalCalls&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;InternalCalls::Add&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;GameAssembly.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;0x1c6dc0&lt;/code&gt;&lt;/td&gt;&lt;td&gt;写入 &lt;code&gt;s_InternalCalls&lt;/code&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;RegisterModuleICalls_Core&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;UnityPlayer.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;0xfe4b20&lt;/code&gt;&lt;/td&gt;&lt;td&gt;Core ICall 批量注册&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;Camera_Get_Custom_PropMain&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;UnityPlayer.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;0x71b00&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;Camera.get_main&lt;/code&gt; 的 native 落点&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;FindMainCamera&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;UnityPlayer.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;0x5acc40&lt;/code&gt;&lt;/td&gt;&lt;td&gt;查找主 Camera&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;code&gt;ScriptingWrapperFor&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;UnityPlayer.dll&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;0x775e40&lt;/code&gt;&lt;/td&gt;&lt;td&gt;native object 包装成脚本对象&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;p&gt;这些地址只用于说明当前样本的证据链。换 Unity 版本、构建配置或平台后，地址和符号名都可能变化，但“wrapper 惰性缓存 → resolver 查表 → UnityPlayer 注册 → native 落点”这条结构关系仍然是分析 internal call 的核心路径。&lt;/p&gt;&lt;hr /&gt;&lt;/section&gt;
+&lt;section&gt;&lt;h2&gt;结论&lt;a href=&quot;#结论&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;IL2CPP internal call 是 UnityEngine API 进入引擎 native 实现的一条桥。generated wrapper 不直接承载业务逻辑，而是维护一个惰性解析缓存；&lt;code&gt;InternalCalls::Resolve&lt;/code&gt; 把字符串名映射到 native 函数指针；UnityPlayer 的注册函数负责在启动阶段把 name/function 对写入 GameAssembly 的 internal call 表。&lt;/p&gt;&lt;p&gt;&lt;code&gt;Camera.get_main&lt;/code&gt; 这个样本把链路展示得很清楚：第一次调用解析 &lt;code&gt;UnityEngine.Camera::get_main()&lt;/code&gt;，通过括号裁剪命中 &lt;code&gt;UnityEngine.Camera::get_main&lt;/code&gt;，拿到 &lt;code&gt;Camera_Get_Custom_PropMain&lt;/code&gt; 并写回 wrapper 缓存。后续调用直接跳到这个 native 函数，但每次仍会执行 &lt;code&gt;FindMainCamera&lt;/code&gt; 和对象包装逻辑。&lt;/p&gt;&lt;p&gt;这类文章的价值不在于记住某个 API 的地址，而在于掌握 internal call 的通用闭环：&lt;strong&gt;generated wrapper 提供入口，GameAssembly 保存映射，UnityPlayer 注册实现，native 函数承载语义。&lt;/strong&gt;&lt;/p&gt;&lt;/section&gt;</content:encoded></item><item><title>UE 三面映射材质：坐标投影、方向权重与材质层组织</title><link>https://zushinzackery2-ship-it.github.io/blog/posts/15-ue-triplanar-material/</link><guid isPermaLink="true">https://zushinzackery2-ship-it.github.io/blog/posts/15-ue-triplanar-material/</guid><description>三面映射不是一个单独的贴图技巧，而是一组围绕空间坐标、法线权重、纹理采样、法线重定向和材质层混合展开的材质结构。本文按笔记形式整理 UE 三面映射材质的节点职责和组合数学。</description><pubDate>Mon, 15 Jun 2026 00:00:00 GMT</pubDate><content:encoded>&lt;blockquote&gt;&lt;p&gt;三面映射的价值不在于省掉 UV，而在于把贴图坐标从模型 UV 转移到空间坐标。材质不再依赖网格自身展开，而是从 X、Y、Z 三个方向投影纹理，再用表面法线决定三个方向的混合比例。&lt;/p&gt;&lt;/blockquote&gt;
 &lt;hr /&gt;
 &lt;section&gt;&lt;h2&gt;先说结论&lt;a href=&quot;#先说结论&quot;&gt;&lt;span&gt;#&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;三面映射可以看成一条固定的数据流：&lt;/p&gt;&lt;div&gt;&lt;figure&gt;&lt;figcaption&gt;&lt;/figcaption&gt;&lt;pre&gt;&lt;code&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;1&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;空间位置 P&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;2&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;3&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;三个二维投影坐标 UVx / UVy / UVz&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;4&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;5&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;三次纹理采样 SampleX / SampleY / SampleZ&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;6&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;7&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;由法线生成的方向权重 Wx / Wy / Wz&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;8&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;&lt;span&gt;  &lt;/span&gt;&lt;/span&gt;&lt;span&gt;↓&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;div&gt;9&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span&gt;加权混合后的材质数据&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/code&gt;&lt;/pre&gt;&lt;div&gt;&lt;div&gt;&lt;/div&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;/div&gt;&lt;p&gt;这条链路里有两个核心判断。&lt;/p&gt;&lt;p&gt;第一，&lt;strong&gt;坐标来自空间，不来自模型 UV&lt;/strong&gt;。World Position 或 Object Position 被拆成三个二维投影平面。纹理比例、偏移和旋转都只是这些二维坐标上的变换。&lt;/p&gt;&lt;p&gt;第二，&lt;strong&gt;混合比例来自表面法线&lt;/strong&gt;。表面越朝向某个轴，就越多使用对应方向的投影结果。权重需要经过锐利度调整和归一化，否则斜面区域容易变亮、变暗或接缝过宽。&lt;/p&gt;&lt;p&gt;Color、Mask、Normal 三类数据不应该混成一个概念。颜色和 ORM 这类线性遮罩可以共用同一套投影与权重；法线贴图必须单独处理方向重定向和归一化。&lt;/p&gt;
 
