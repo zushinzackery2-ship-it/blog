@@ -1,0 +1,302 @@
+<!DOCTYPE html><html lang="zh-CN" data-astro-cid-cymvyra4> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f2ec"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#151412"><title>IL2CPP 元数据表：从一张表还原 Unity 项目全貌 · Shrei</title><meta name="description" content="每个 IL2CPP 构建的 Unity 游戏，都在 GameAssembly.dll 里藏了一份记录 runtime 索引规模的表。本文教你读懂这份户口本，用真实数据量化项目复杂度。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/02-il2cpp-registration-counts/"><meta property="og:title" content="IL2CPP 元数据表：从一张表还原 Unity 项目全貌 · Shrei"><meta property="og:description" content="每个 IL2CPP 构建的 Unity 游戏，都在 GameAssembly.dll 里藏了一份记录 runtime 索引规模的表。本文教你读懂这份户口本，用真实数据量化项目复杂度。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/02-il2cpp-registration-counts/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><!-- 同步主站主题选择：light/dark 显式跟随，auto 或无记录回落系统偏好。
+             data-theme 取 expressive-code 主题名，同时驱动 light-dark() 色板与代码块配色 --><script>
+            (function () {
+                let stored = null;
+                try {
+                    stored = localStorage.getItem('shrei-theme');
+                } catch (_) {
+                    /* 隐私模式下不可用，回落系统偏好 */
+                }
+                const media = window.matchMedia('(prefers-color-scheme: dark)');
+                const apply = () => {
+                    const dark = stored === 'dark' || (stored !== 'light' && media.matches);
+                    document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
+                };
+                apply();
+                if (stored !== 'light' && stored !== 'dark') {
+                    media.addEventListener('change', apply);
+                }
+            })();
+        </script><style>:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}.topbar[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-cymvyra4]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-cymvyra4]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-cymvyra4]:hover{color:var(--red)}.center[data-astro-cid-cymvyra4]{min-width:0;text-align:center}.to-home[data-astro-cid-cymvyra4]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-cymvyra4]:hover{color:var(--red)}.to-home[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(.25em)}footer[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]{transition:color .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover{color:var(--red)}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(-.25em)}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-cymvyra4]{grid-template-columns:1fr auto}.center[data-astro-cid-cymvyra4]{display:none}footer[data-astro-cid-cymvyra4]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:start}}@media print{.topbar[data-astro-cid-cymvyra4] .to-home[data-astro-cid-cymvyra4],footer[data-astro-cid-cymvyra4]{display:none}}
+</style><link rel="stylesheet" href="/blog/astro/_slug_.DPRvZoUD.css"><script type="module" src="/blog/astro/page.DUzMluoR.js"></script></head> <body data-astro-cid-cymvyra4> <div class="frame" data-astro-cid-cymvyra4> <div class="topbar micro" data-astro-cid-cymvyra4> <a class="brand" href="/blog/minimalist/" data-astro-cid-cymvyra4>Shrei — Technical Index</a> <div class="center" data-astro-cid-cymvyra4><span class="topbar-category" data-astro-cid-wy3xnbws>Unity 逆向</span></div> <a class="to-home" href="/blog/" data-astro-cid-cymvyra4>
+博客主站 <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-wy3xnbws> <p class="category micro" data-astro-cid-wy3xnbws>Unity 逆向</p> <h1 data-astro-cid-wy3xnbws> IL2CPP 元数据表：从一张表还原 Unity 项目全貌  </h1> <div class="meta micro" data-astro-cid-wy3xnbws> <time datetime="2026-06-08" data-astro-cid-wy3xnbws>2026-06-08</time> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>15 min</span> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>4,297 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span class="tags" data-astro-cid-wy3xnbws>Reverse Engineering / Unity / IL2CPP / GameAssembly</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#一句话概括" data-astro-cid-wy3xnbws>一句话概括</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#一什么是-registration-表" data-astro-cid-wy3xnbws>一、什么是 Registration 表</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#二读取方式countpointer-成对布局" data-astro-cid-wy3xnbws>二、读取方式：Count/Pointer 成对布局</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#三g_coderegistration代码入口花名册" data-astro-cid-wy3xnbws>三、g_CodeRegistration：代码入口”花名册”</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#总览" data-astro-cid-wy3xnbws>总览</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#逐项解读" data-astro-cid-wy3xnbws>逐项解读</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#四g_metadataregistration元数据档案库" data-astro-cid-wy3xnbws>四、g_MetadataRegistration：元数据”档案库”</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#总览-1" data-astro-cid-wy3xnbws>总览</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#逐项解读-1" data-astro-cid-wy3xnbws>逐项解读</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#五两张表放在一起看" data-astro-cid-wy3xnbws>五、两张表放在一起看</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#这些维度告诉我们什么" data-astro-cid-wy3xnbws>这些维度告诉我们什么</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#这些维度的边界" data-astro-cid-wy3xnbws>这些维度的边界</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#六实际应用场景" data-astro-cid-wy3xnbws>六、实际应用场景</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#场景-1比较两个版本的规模变化" data-astro-cid-wy3xnbws>场景 1：比较两个版本的规模变化</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#场景-2评估-hook注入的复杂度" data-astro-cid-wy3xnbws>场景 2：评估 Hook/注入的复杂度</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#场景-3理解性能特征" data-astro-cid-wy3xnbws>场景 3：理解性能特征</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#七小结" data-astro-cid-wy3xnbws>七、小结</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+</a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <blockquote><p>每个 IL2CPP 构建的 Unity 游戏，都在 GameAssembly.dll 里藏了一份”户口本”——记录着泛型、类型、方法等 runtime 索引的规模。本文教你读懂这份”户口本”，用真实数据量化一个 IL2CPP 项目的复杂度。</p></blockquote>
+<hr>
+<h2 id="一句话概括">一句话概括<a class="anchor" href="#一句话概括"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>IL2CPP 的 Registration 表是 AOT 编译器在 <code>GameAssembly.dll</code> 中写死的一份”户口本”，记录着泛型方法指针、方法规格、类型登记、调用入口、类型布局、代码模块等 runtime 索引的规模。这些数字描述的是 AOT 编译后的 runtime 索引规模，不是源码层的类/方法数量。不同项目的数字差异很大——小项目可能只有几千，中大型项目可达数万甚至数十万。</p>
+<hr>
+<h2 id="一什么是-registration-表">一、什么是 Registration 表<a class="anchor" href="#一什么是-registration-表"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>使用 Unity 的 IL2CPP 后端构建项目时，编译器会做两件事：</p>
+<ol>
+<li><strong>把你的 C# 代码翻译成 C++，再编译成机器码</strong> —— 这些代码存在 GameAssembly.dll 里</li>
+<li><strong>生成一份”索引目录”</strong> —— 记录所有类型、方法、泛型实例的位置和关系，也存在 GameAssembly.dll 里</li>
+</ol>
+<p>这份”索引目录”就是 <strong>Registration 表</strong>。它有两张：</p>
+<ul>
+<li><strong><code>g_CodeRegistration</code></strong> —— “代码入口表”，记录各种 native 代码入口的地址</li>
+<li><strong><code>g_MetadataRegistration</code></strong> —— “元数据索引表”，记录类型、泛型、方法规格等索引</li>
+</ul>
+<p>它们不是源码统计，而是 AOT 编译器在生成 GameAssembly 时写死的二进制数据。通过解析它们，我们可以量化一个项目的 runtime 规模。</p>
+<hr>
+<h2 id="二读取方式countpointer-成对布局">二、读取方式：Count/Pointer 成对布局<a class="anchor" href="#二读取方式countpointer-成对布局"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>Registration 表采用一种简单的重复模式：</p>
+<div class="expressive-code"><link rel="stylesheet" href="/blog/astro/ec.iz9dg.css"><script type="module" src="/blog/astro/ec.0vx5m.js"></script><figure class="frame"><figcaption class="header"></figcaption><pre data-language="plaintext"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">数量</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">指向数组的指针</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">数量</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">指向数组的指针</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">...</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="数量指向数组的指针数量指向数组的指针..."><div></div></button></div></figure></div>
+<p>就像这样：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="plaintext"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">g_MetadataRegistration 的开头可以按这个模式理解：</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">第一个槽位：某类记录的数量</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">第二个槽位：对应记录数组的位置</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="g_MetadataRegistration 的开头可以按这个模式理解：  第一个槽位：某类记录的数量  第二个槽位：对应记录数组的位置"><div></div></button></div></figure></div>
+<p>理解了这个模式，后面的表项就不需要死记硬背。先看数量，再沿着指针找到对应数组，Registration 表的大部分字段都可以用这套读法拆开。</p>
+<hr>
+<h2 id="三g_coderegistration代码入口花名册">三、g_CodeRegistration：代码入口”花名册”<a class="anchor" href="#三g_coderegistration代码入口花名册"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>这张表告诉我们：GameAssembly 里有多少种不同的”代码入口”。</p>
+<h3 id="总览">总览<a class="anchor" href="#总览"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>项目</th><th>规模特征</th><th>通俗解释</th></tr></thead><tbody><tr><td>Reverse P/Invoke wrappers</td><td>通常很少（0 ~ 几十）</td><td>Native 回调 C# 的”翻译官”</td></tr><tr><td>Generic method pointers</td><td>中小型项目几千，大型项目数万 ~ 数十万</td><td>泛型方法的实际代码入口</td></tr><tr><td>Invoker pointers</td><td>通常与 generic method pointers 同量级或略少</td><td>Runtime 统一调用的”中转站”</td></tr><tr><td>Unresolved virtual calls</td><td>通常几百到几千</td><td>运行时才能确定目标的虚调用</td></tr><tr><td>Interop data</td><td>纯 C# 项目可能为 0，有 P/Invoke 的项目几百 ~ 几千</td><td>与 Native/COM 互操作的数据</td></tr><tr><td>Codegen modules</td><td>通常几十到几百个</td><td>代码被拆分成的模块数</td></tr></tbody></table>
+<h3 id="逐项解读">逐项解读<a class="anchor" href="#逐项解读"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<h4 id="reverse-pinvoke-wrappers">Reverse P/Invoke Wrappers<a class="anchor" href="#reverse-pinvoke-wrappers"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h4>
+<p>当 Native 代码需要回调 C# 代码时（比如 Windows API 的回调函数），IL2CPP 需要一层”翻译”来把调用约定、参数布局转换好。大多数项目这个数值很小（个位数到两位数），因为主动让 Native 调回 Managed 的场景不多。</p>
+<h4 id="generic-method-pointers">Generic Method Pointers<a class="anchor" href="#generic-method-pointers"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h4>
+<p>这是通常最大的一类。你的 C# 代码里写了 <code>List&#x3C;T></code>、<code>Dictionary&#x3C;K,V></code> 这样的泛型，IL2CPP 在 AOT 阶段会把它们实例化成具体的类型（如 <code>List&#x3C;int></code>、<code>List&#x3C;string></code>），每个实例对应一个 native 代码入口。</p>
+<p>这个数字描述的是 AOT 展开后的具体代码入口数量，反映项目的泛型使用程度——泛型用得越多、类型参数组合越丰富，这个数字越大。</p>
+<h4 id="invoker-pointers">Invoker Pointers<a class="anchor" href="#invoker-pointers"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h4>
+<p>Invoker 是 IL2CPP runtime 的”统一呼叫台”。通过反射调用方法、或 runtime 需要做动态分发时，会通过 invoker 来调用目标方法。</p>
+<p>Invoker 数量通常与 generic method pointers 同量级或略少，说明 runtime 可调度的”中转入口”规模。</p>
+<h4 id="unresolved-virtual-calls">Unresolved Virtual Calls<a class="anchor" href="#unresolved-virtual-calls"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h4>
+<p>AOT 编译时，有些虚调用、接口调用的目标要等运行时才能确定（比如泛型虚方法）。IL2CPP 会保留这些”待解析”的入口，在运行时通过 vtable 或其他机制找到真正的目标。</p>
+<h4 id="interop-data">Interop Data<a class="anchor" href="#interop-data"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h4>
+<p>与 Native 代码、COM、WinRT、P/Invoke 互操作相关的数据。纯 C# 项目可能为 0，有大量 P/Invoke 或 COM 互操作的项目这个数字会明显上升。</p>
+<h4 id="codegen-modules">Codegen Modules<a class="anchor" href="#codegen-modules"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h4>
+<p>IL2CPP 把生成的代码按模块拆分，每个模块通常对应一个程序集或代码单元。模块数量反映代码的组织粒度——模块越多，说明项目被拆成了更多独立的编译单元。</p>
+<hr>
+<h2 id="四g_metadataregistration元数据档案库">四、g_MetadataRegistration：元数据”档案库”<a class="anchor" href="#四g_metadataregistration元数据档案库"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>如果说 CodeRegistration 是”花名册”，MetadataRegistration 就是”档案库”——记录类型、泛型、方法规格等 metadata 索引。</p>
+<h3 id="总览-1">总览<a class="anchor" href="#总览-1"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>项目</th><th>规模特征</th><th>通俗解释</th></tr></thead><tbody><tr><td>Generic classes</td><td>通常几千到几万</td><td>泛型类的具体实例登记</td></tr><tr><td>Generic instances</td><td>通常几千到几万</td><td>泛型参数的不同组合</td></tr><tr><td>Generic method table</td><td>通常与 generic method pointers 同量级</td><td>泛型方法的登记关系</td></tr><tr><td>Types</td><td>中小型项目几千，大型项目几万 ~ 数十万</td><td>所有类型的登记项</td></tr><tr><td>Method specs</td><td>通常是 generic method table 的 1 ~ 1.5 倍</td><td>方法泛型规格</td></tr><tr><td>Field offsets</td><td>与 type definition sizes 完全相等</td><td>字段在内存中的偏移量</td></tr><tr><td>Type definition sizes</td><td>与 field offsets 完全相等</td><td>类型在内存中的大小</td></tr><tr><td>Metadata usages</td><td>可能为 0，也可能有值</td><td>运行时 metadata 使用记录</td></tr></tbody></table>
+<h3 id="逐项解读-1">逐项解读<a class="anchor" href="#逐项解读-1"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<h4 id="generic-classes">Generic Classes<a class="anchor" href="#generic-classes"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h4>
+<p>这个数字描述 AOT 展开后产生的具体泛型类实例数量（如 <code>List&#x3C;int></code>、<code>Dictionary&#x3C;string, object></code> 等）。泛型用得越多，这个数字越大。</p>
+<h4 id="generic-instances">Generic Instances<a class="anchor" href="#generic-instances"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h4>
+<p>泛型参数的不同组合。比如 <code>List&#x3C;int></code> 和 <code>List&#x3C;string></code> 是两个不同的 generic instance。组合越丰富，说明泛型参数的使用越多样。</p>
+<h4 id="generic-method-table">Generic Method Table<a class="anchor" href="#generic-method-table"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h4>
+<p>与 CodeRegistration 里的 generic method pointers 数量通常接近，但含义不同：</p>
+<ul>
+<li><strong>Generic method table</strong> = “档案”，记录泛型方法的关系和元数据</li>
+<li><strong>Generic method pointers</strong> = “门牌号”，指向实际的 native 代码</li>
+</ul>
+<p>两者数量接近说明”档案”和”门牌号”基本一一对应，但通常略有差异，因为有些档案条目属于抽象或间接调度场景。</p>
+<h4 id="types">Types<a class="anchor" href="#types"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h4>
+<p>包括基础类型（int、string）、数组、泛型实例、修饰类型（ref、指针）等。它描述的是所有类型登记项的总和。一个项目如果有大量泛型展开，这个数字会显著膨胀。</p>
+<h4 id="method-specs">Method Specs<a class="anchor" href="#method-specs"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h4>
+<p>通常是整张表中最大的一项。Method spec 描述方法的泛型规格——比如 <code>void Foo&#x3C;T>()</code> 在不同 <code>T</code> 下的规格。</p>
+<p>它比 generic method table 和 generic method pointers 都大，说明”规格记录”比最终的”代码入口”更多。这很正常：一个泛型方法模板可能对应多个规格，但只有部分规格会生成实际代码。</p>
+<h4 id="field-offsets--type-definition-sizes">Field Offsets &#x26; Type Definition Sizes<a class="anchor" href="#field-offsets--type-definition-sizes"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h4>
+<p>这两个数字永远相等，因为 IL2CPP 为同一批类型定义同时记录：</p>
+<ul>
+<li><strong>字段偏移</strong> —— 每个字段在对象内存中的位置</li>
+<li><strong>类型大小</strong> —— 整个类型占多少字节</li>
+</ul>
+<p>它们共同反映了项目的类型定义规模。</p>
+<h4 id="metadata-usages">Metadata Usages<a class="anchor" href="#metadata-usages"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h4>
+<p>这个字段可能为 0，也可能有值。为 0 只能说明 generated registration 里没填这个数，不代表项目没有 metadata 使用。具体含义取决于 IL2CPP 版本和编译选项。</p>
+<hr>
+<h2 id="五两张表放在一起看">五、两张表放在一起看<a class="anchor" href="#五两张表放在一起看"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>把 CodeRegistration 和 MetadataRegistration 的数据合并，可以得到项目的完整规模画像：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="plaintext"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">┌─────────────────────────────────────────────┐</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">│           Registration 表维度总览            │</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">├─────────────────────────────────────────────┤</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">│  泛型方法代码入口      genericMethodPointers │</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">│  泛型方法档案          genericMethodTable    │</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">│  方法规格              methodSpecs           │</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">│  类型登记              types                 │</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">8</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">│  泛型类实例            genericClasses        │</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">9</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">│  泛型参数组合          genericInstances      │</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">10</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">│  统一调用入口          invokerPointers       │</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">11</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">│  类型布局记录          fieldOffsets/sizes    │</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">12</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">│  未解析虚调用          unresolvedVirtual     │</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">13</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">│  互操作数据            interopData           │</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">14</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">│  代码模块              codeGenModules        │</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">15</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">│  Native回调翻译官      reversePInvoke        │</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">16</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">└─────────────────────────────────────────────┘</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="┌─────────────────────────────────────────────┐│           Registration 表维度总览            │├─────────────────────────────────────────────┤│  泛型方法代码入口      genericMethodPointers ││  泛型方法档案          genericMethodTable    ││  方法规格              methodSpecs           ││  类型登记              types                 ││  泛型类实例            genericClasses        ││  泛型参数组合          genericInstances      ││  统一调用入口          invokerPointers       ││  类型布局记录          fieldOffsets/sizes    ││  未解析虚调用          unresolvedVirtual     ││  互操作数据            interopData           ││  代码模块              codeGenModules        ││  Native回调翻译官      reversePInvoke        │└─────────────────────────────────────────────┘"><div></div></button></div></figure></div>
+<h3 id="这些维度告诉我们什么">这些维度告诉我们什么<a class="anchor" href="#这些维度告诉我们什么"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<h4 id="泛型使用程度">泛型使用程度<a class="anchor" href="#泛型使用程度"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h4>
+<p>泛型相关表（generic method pointers、generic method table、method specs）通常是 Registration 表中最大的一类。如果这三个数字都在数万级别，说明项目大量使用了泛型——<code>List&#x3C;T></code>、<code>Dictionary&#x3C;K,V></code>、<code>Task&#x3C;T></code>、<code>IEnumerable&#x3C;T></code> 等现代 C# 特性被广泛使用。如果只有几千，说明泛型使用相对克制。</p>
+<h4 id="类型系统复杂度">类型系统复杂度<a class="anchor" href="#类型系统复杂度"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h4>
+<p>Types 的数量直接反映类型系统的规模。小项目可能只有几千，中大型项目几万到几十万。注意这里统计的是类型登记项——它包括基础类型、数组、泛型实例、修饰类型等所有 IL2CPP 需要登记的类型。</p>
+<h4 id="互操作强度">互操作强度<a class="anchor" href="#互操作强度"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h4>
+<p>Interop data 和 reverse P/Invoke 的数量反映项目与 Native 边界的复杂程度。纯 C# 项目可能接近 0，大量使用 P/Invoke、COM 或 WinRT 的项目这个数字会显著上升。</p>
+<h4 id="模块化程度">模块化程度<a class="anchor" href="#模块化程度"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h4>
+<p>Codegen modules 的数量反映代码的组织粒度。模块越多，说明项目被拆成了更多独立的编译单元（通常对应更多程序集）。模块过少可能意味着代码耦合度高，过多则可能意味着过度碎片化。</p>
+<h3 id="这些维度的边界">这些维度的边界<a class="anchor" href="#这些维度的边界"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>容易误解的对象</th><th>实际含义</th></tr></thead><tbody><tr><td>C# 源码文件数量</td><td>一个文件可能有几十上百个类型，registration 计数适合看 runtime 索引规模。</td></tr><tr><td>C# 类数量</td><td>类型登记包括基础类型、数组、泛型实例等，不只包括类。</td></tr><tr><td>C# 方法总数</td><td>method spec 是泛型规格，不是方法声明。</td></tr><tr><td>运行时对象数量</td><td>这是编译期索引，不是运行时状态。</td></tr><tr><td>所有泛型实例都会被执行</td><td>AOT 可能生成了一些实际上不会用到的代码。</td></tr></tbody></table>
+<hr>
+<h2 id="六实际应用场景">六、实际应用场景<a class="anchor" href="#六实际应用场景"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<h3 id="场景-1比较两个版本的规模变化">场景 1：比较两个版本的规模变化<a class="anchor" href="#场景-1比较两个版本的规模变化"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<p>两个版本的 GameAssembly（比如更新前后）对比 registration 表的计数，可以看出：</p>
+<ul>
+<li>泛型膨胀了多少？（generic method pointers 的变化）</li>
+<li>新增了多少类型？（types 的变化）</li>
+<li>模块化有没有变化？（codegen modules 的变化）</li>
+</ul>
+<p>即使不知道绝对数值的大小，观察相对变化就已经很有价值——比如某个版本更新后 method specs 暴涨，很可能是因为引入了新的泛型密集型库。</p>
+<h3 id="场景-2评估-hook注入的复杂度">场景 2：评估 Hook/注入的复杂度<a class="anchor" href="#场景-2评估-hook注入的复杂度"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<ul>
+<li>泛型方法指针越多，Hook 泛型方法的工作量越大</li>
+<li>Codegen modules 越多，代码分布越分散</li>
+<li>Interop data 越多，与 native 的边界越复杂</li>
+</ul>
+<h3 id="场景-3理解性能特征">场景 3：理解性能特征<a class="anchor" href="#场景-3理解性能特征"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<ul>
+<li>Method specs 多 → 泛型展开多 → 代码体积大 → 可能影响启动时间和内存占用</li>
+<li>Invoker pointers 多 → 反射/动态调用场景多 → 可能有性能热点</li>
+<li>Unresolved virtual calls 多 → 运行时虚解析开销大</li>
+</ul>
+<hr>
+<h2 id="七小结">七、小结<a class="anchor" href="#七小结"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>Registration 表是 IL2CPP AOT 编译器留下的”户口本”，通过解析它，我们可以量化一个项目的 runtime 索引规模。以下是对各维度的概括：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>维度</th><th>典型规模</th><th>含义</th></tr></thead><tbody><tr><td>泛型规模</td><td>几千 ~ 几十万</td><td>generic method pointers / table / specs 的总量级</td></tr><tr><td>类型规模</td><td>几千 ~ 几十万</td><td>types 登记项的总量级</td></tr><tr><td>布局规模</td><td>与类型规模正相关</td><td>field offsets / type definition sizes 的记录数</td></tr><tr><td>调用规模</td><td>与泛型规模同量级或略少</td><td>invoker pointers 的总量级</td></tr><tr><td>模块规模</td><td>几十 ~ 几百</td><td>codegen modules 的数量</td></tr><tr><td>互操作规模</td><td>0 ~ 几千</td><td>interop data / reverse P/Invoke 的总量级</td></tr></tbody></table>
+<p>最后强调一点：这些数字描述的是 AOT 编译后的 runtime 索引规模，对应的是 IL2CPP 运行时登记项，而非源码层的类、方法或代码行数。不同项目的数字差异很大——小项目可能只有几千，中大型项目可达数万甚至数十万。它们帮助我们理解 IL2CPP 项目的”体型”和”结构”。</p>
+<hr>
+<p><em>本文基于 Unity 2022 IL2CPP 产物分析经验撰写。文中提到的字段布局与命名以 Unity 2022.3.x 版本为准，不同 Unity 版本的 Registration 表结构可能存在差异。</em></p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-wy3xnbws> <div class="nav-cell" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/08-windows-dr-veh-control-flow-tracing/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 上一篇
+</span> <span class="nav-title" data-astro-cid-wy3xnbws>Windows 控制流追踪：用硬件断点与 VEH 实现基本块级 trace</span> </a> </div> <div class="nav-cell next" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/01-il2cpp-init-deep-dive/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws>
+下一篇 <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8594;</span> </span> <span class="nav-title" data-astro-cid-wy3xnbws>Unity IL2CPP 启动原理：从 UnityPlayer 到 GameAssembly 的初始化序列</span> </a> </div> </nav> </div> </div>  <footer class="micro" data-astro-cid-cymvyra4> <a class="back" href="/blog/minimalist/" data-astro-cid-cymvyra4> <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8592;</span> 返回技术索引 </a> <span class="copy" data-astro-cid-cymvyra4>&copy; 2026 Shrei</span> <span class="colophon" data-astro-cid-cymvyra4>Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div> </body></html> 

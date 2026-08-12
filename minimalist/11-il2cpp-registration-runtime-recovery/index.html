@@ -1,0 +1,287 @@
+<!DOCTYPE html><html lang="zh-CN" data-astro-cid-cymvyra4> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f2ec"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#151412"><title>IL2CPP Registration 与字段偏移的运行时恢复 · Shrei</title><meta name="description" content="global-metadata.dat 只能恢复静态类型语义。要拿到字段偏移、方法地址和类型布局，还需要在 GameAssembly.dll 中定位 CodeRegistration 与 MetadataRegistration。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/11-il2cpp-registration-runtime-recovery/"><meta property="og:title" content="IL2CPP Registration 与字段偏移的运行时恢复 · Shrei"><meta property="og:description" content="global-metadata.dat 只能恢复静态类型语义。要拿到字段偏移、方法地址和类型布局，还需要在 GameAssembly.dll 中定位 CodeRegistration 与 MetadataRegistration。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/11-il2cpp-registration-runtime-recovery/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><!-- 同步主站主题选择：light/dark 显式跟随，auto 或无记录回落系统偏好。
+             data-theme 取 expressive-code 主题名，同时驱动 light-dark() 色板与代码块配色 --><script>
+            (function () {
+                let stored = null;
+                try {
+                    stored = localStorage.getItem('shrei-theme');
+                } catch (_) {
+                    /* 隐私模式下不可用，回落系统偏好 */
+                }
+                const media = window.matchMedia('(prefers-color-scheme: dark)');
+                const apply = () => {
+                    const dark = stored === 'dark' || (stored !== 'light' && media.matches);
+                    document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
+                };
+                apply();
+                if (stored !== 'light' && stored !== 'dark') {
+                    media.addEventListener('change', apply);
+                }
+            })();
+        </script><style>:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}.topbar[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-cymvyra4]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-cymvyra4]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-cymvyra4]:hover{color:var(--red)}.center[data-astro-cid-cymvyra4]{min-width:0;text-align:center}.to-home[data-astro-cid-cymvyra4]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-cymvyra4]:hover{color:var(--red)}.to-home[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(.25em)}footer[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]{transition:color .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover{color:var(--red)}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(-.25em)}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-cymvyra4]{grid-template-columns:1fr auto}.center[data-astro-cid-cymvyra4]{display:none}footer[data-astro-cid-cymvyra4]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:start}}@media print{.topbar[data-astro-cid-cymvyra4] .to-home[data-astro-cid-cymvyra4],footer[data-astro-cid-cymvyra4]{display:none}}
+</style><link rel="stylesheet" href="/blog/astro/_slug_.DPRvZoUD.css"><script type="module" src="/blog/astro/page.DUzMluoR.js"></script></head> <body data-astro-cid-cymvyra4> <div class="frame" data-astro-cid-cymvyra4> <div class="topbar micro" data-astro-cid-cymvyra4> <a class="brand" href="/blog/minimalist/" data-astro-cid-cymvyra4>Shrei — Technical Index</a> <div class="center" data-astro-cid-cymvyra4><span class="topbar-category" data-astro-cid-wy3xnbws>Unity 逆向</span></div> <a class="to-home" href="/blog/" data-astro-cid-cymvyra4>
+博客主站 <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-wy3xnbws> <p class="category micro" data-astro-cid-wy3xnbws>Unity 逆向</p> <h1 data-astro-cid-wy3xnbws> IL2CPP Registration 与字段偏移的运行时恢复  </h1> <div class="meta micro" data-astro-cid-wy3xnbws> <time datetime="2026-06-11" data-astro-cid-wy3xnbws>2026-06-11</time> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>11 min</span> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>3,069 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span class="tags" data-astro-cid-wy3xnbws>Reverse Engineering / Unity / IL2CPP / Registration / GameAssembly</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#结论先行" data-astro-cid-wy3xnbws>结论先行</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#1-metadata-和-registration-的职责边界" data-astro-cid-wy3xnbws>1. Metadata 和 Registration 的职责边界</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#2-两张-registration-表分别负责什么" data-astro-cid-wy3xnbws>2. 两张 Registration 表分别负责什么</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#3-为什么-registration-需要扫描定位" data-astro-cid-wy3xnbws>3. 为什么 Registration 需要扫描定位</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#4-coderegistration-的扫描路径" data-astro-cid-wy3xnbws>4. CodeRegistration 的扫描路径</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#5-metadataregistration-的扫描路径" data-astro-cid-wy3xnbws>5. MetadataRegistration 的扫描路径</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#6-字段偏移的动态恢复" data-astro-cid-wy3xnbws>6. 字段偏移的动态恢复</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#7-struct-和-enum-的偏移修正" data-astro-cid-wy3xnbws>7. Struct 和 enum 的偏移修正</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#8-alias-查询只是入口优化" data-astro-cid-wy3xnbws>8. Alias 查询只是入口优化</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#9-缓存与失效条件" data-astro-cid-wy3xnbws>9. 缓存与失效条件</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#10-边界与风险" data-astro-cid-wy3xnbws>10. 边界与风险</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#11-结论" data-astro-cid-wy3xnbws>11. 结论</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+</a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <blockquote><p>Metadata 提供类型和字段名称，Registration 提供它们的运行时位置。字段偏移、方法地址和类型布局属于 Registration 表，需要从 GameAssembly.dll 的运行时数据里恢复。</p></blockquote>
+<hr>
+<h2 id="结论先行">结论先行<a class="anchor" href="#结论先行"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p><code>global-metadata.dat</code> 解决的是静态语义，<code>CodeRegistration</code> 和 <code>MetadataRegistration</code> 解决的是运行时映射。外部工具要从 IL2CPP 目标中恢复可用的对象布局和方法地址，必须把这两部分接起来。</p>
+<p>核心链路是：先用 metadata 拿到 typeDef index、fieldSlot、method token 这些静态索引，再定位 Registration 表，从 <code>fieldOffsets</code>、<code>typeDefinitionsSizes</code>、<code>codeGenModules</code> 等运行时数组里取出实际偏移和地址。</p>
+<p>这也是跨版本字段偏移查询成立的原因：字段偏移不是靠硬编码表维护，而是由 IL2CPP runtime 自己生成并保存在 <code>MetadataRegistration</code> 中。只要能定位这张表，就能按 typeDef index 动态恢复字段布局。</p>
+<hr>
+<h2 id="1-metadata-和-registration-的职责边界">1. Metadata 和 Registration 的职责边界<a class="anchor" href="#1-metadata-和-registration-的职责边界"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>IL2CPP 的数据可以分成两层：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>层级</th><th>代表数据</th><th>解决的问题</th></tr></thead><tbody><tr><td>静态 metadata</td><td><code>global-metadata.dat</code></td><td>类型、字段、方法、参数、assembly 的语义定义</td></tr><tr><td>运行时 registration</td><td><code>CodeRegistration</code> / <code>MetadataRegistration</code></td><td>方法地址、字段偏移、类型大小、泛型实例等运行时映射</td></tr></tbody></table>
+<p>metadata 负责这些信息：</p>
+<ul>
+<li>有哪些类型。</li>
+<li>每个类型有哪些字段和方法。</li>
+<li>字段和方法叫什么。</li>
+<li>类型之间的继承和组织关系。</li>
+</ul>
+<p>运行时映射则来自 Registration 表：</p>
+<ul>
+<li>某个字段在对象内存中的偏移是多少。</li>
+<li>某个方法的 native 函数地址。</li>
+<li>某个类型在运行时的大小是多少。</li>
+<li>某个泛型实例最终对应哪份运行时类型数据。</li>
+</ul>
+<p>这些答案都要从 Registration 表里取。</p>
+<hr>
+<h2 id="2-两张-registration-表分别负责什么">2. 两张 Registration 表分别负责什么<a class="anchor" href="#2-两张-registration-表分别负责什么"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>IL2CPP AOT 编译阶段会在 <code>GameAssembly.dll</code> 中生成两类全局登记表。</p>
+<p><code>CodeRegistration</code> 负责 native 代码入口：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>数据</th><th>用途</th></tr></thead><tbody><tr><td>method pointers</td><td>普通方法的 native 地址集合</td></tr><tr><td>generic method pointers</td><td>泛型方法实例的 native 地址集合</td></tr><tr><td>invoker pointers</td><td>运行时统一调用入口</td></tr><tr><td>codeGenModules</td><td>按 assembly / module 组织的方法指针表</td></tr></tbody></table>
+<p><code>MetadataRegistration</code> 负责运行时类型布局：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>数据</th><th>用途</th></tr></thead><tbody><tr><td>genericClasses</td><td>泛型类实例登记</td></tr><tr><td>genericInsts</td><td>泛型参数组合</td></tr><tr><td>types</td><td>运行时类型条目</td></tr><tr><td>fieldOffsets</td><td>每个 typeDef 的实例字段偏移数组</td></tr><tr><td>typeDefinitionsSizes</td><td>每个 typeDef 的类型大小和布局信息</td></tr></tbody></table>
+<p>可以把两者理解成同一套类型系统的两个方向：</p>
+<div class="expressive-code"><link rel="stylesheet" href="/blog/astro/ec.iz9dg.css"><script type="module" src="/blog/astro/ec.0vx5m.js"></script><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">metadata：名字、定义、索引关系</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">registration：地址、偏移、运行时布局</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="metadata：名字、定义、索引关系registration：地址、偏移、运行时布局"><div></div></button></div></figure></div>
+<p>外部工具需要两者一起工作。只有 metadata，没有 Registration，只能生成静态 dump；只有 Registration，没有 metadata，则很难知道某个数组槽位对应哪个 C# 类型或字段。</p>
+<hr>
+<h2 id="3-为什么-registration-需要扫描定位">3. 为什么 Registration 需要扫描定位<a class="anchor" href="#3-为什么-registration-需要扫描定位"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p><code>CodeRegistration</code> 和 <code>MetadataRegistration</code> 没有导出符号。不同 Unity 版本、不同构建目标、不同游戏工程里，它们的地址都不一样。</p>
+<p>外部工具一般只能拿到这些基础信息：</p>
+<ul>
+<li><code>GameAssembly.dll</code> 的模块基址和大小。</li>
+<li>模块节区信息，例如 <code>.data</code>、<code>.rdata</code>、<code>.text</code>。</li>
+<li>已导出的 metadata bytes。</li>
+<li>metadata header 中能推导出的 typeDef 数量、image 数量等统计值。</li>
+</ul>
+<p>Registration 扫描的思路不是找固定地址，而是找“结构体内部的数量关系”。这些数量关系来自 metadata 和 runtime 之间的对应关系。</p>
+<p>两个最有用的锚点是：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>锚点</th><th>对应结构</th><th>原因</th></tr></thead><tbody><tr><td><code>codeGenModulesCount == imageCount</code></td><td><code>CodeRegistration</code></td><td>每个 metadata image 对应一个 codegen module</td></tr><tr><td><code>fieldOffsetsCount ≈ typeDefCount</code></td><td><code>MetadataRegistration</code></td><td>每个 typeDef 对应一组字段偏移槽</td></tr></tbody></table>
+<p>这就是双模扫描的基础。</p>
+<hr>
+<h2 id="4-coderegistration-的扫描路径">4. CodeRegistration 的扫描路径<a class="anchor" href="#4-coderegistration-的扫描路径"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>Code 扫描从 metadata header 里先拿到 image 数量。Image 可以理解为 IL2CPP 对程序集或代码模块的组织单元，例如 <code>Assembly-CSharp</code>、<code>UnityEngine.CoreModule</code> 等。</p>
+<p>然后在 GameAssembly 的数据区按 8 字节对齐扫描候选结构体，寻找满足以下条件的位置：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">候选.codeGenModulesCount == metadata.imageCount</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">候选.codeGenModules 指向模块内可读数组</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">数组元素指向合法 CodeGenModule</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">CodeGenModule 内部 method pointer 表也落在合理范围</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="候选.codeGenModulesCount == metadata.imageCount候选.codeGenModules 指向模块内可读数组数组元素指向合法 CodeGenModuleCodeGenModule 内部 method pointer 表也落在合理范围"><div></div></button></div></figure></div>
+<p>这一组检查的意义是从“数字相等”提升到“结构链路成立”。随机数据可能碰巧等于 imageCount，但很难同时形成一条合法的 module 指针链。</p>
+<p>找到 <code>codeGenModules</code> 后，就能沿着 metadata 的方法 token 和 image 关系，把 C# 方法定义映射到 native 函数指针表。</p>
+<hr>
+<h2 id="5-metadataregistration-的扫描路径">5. MetadataRegistration 的扫描路径<a class="anchor" href="#5-metadataregistration-的扫描路径"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>Meta 扫描以 typeDef 数量为锚点。</p>
+<p>metadata header 中记录的是 TypeDef 表字节大小，不直接给出数量。需要根据当前 metadata 版本使用对应的 <code>Il2CppTypeDefinition</code> 大小换算：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">typeDefCount = typeDefinitionsSize / sizeof(Il2CppTypeDefinition)</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="typeDefCount = typeDefinitionsSize / sizeof(Il2CppTypeDefinition)"><div></div></button></div></figure></div>
+<p>不同版本结构体大小可能略有差异，所以扫描时可以保留几个候选计数，再在 GameAssembly 数据区中找：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">候选.fieldOffsetsCount 命中 typeDefCount</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">或</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">候选.typeDefinitionsSizesCount 命中 typeDefCount</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="候选.fieldOffsetsCount 命中 typeDefCount或候选.typeDefinitionsSizesCount 命中 typeDefCount"><div></div></button></div></figure></div>
+<p>命中后继续验证：</p>
+<ul>
+<li><code>fieldOffsets</code> 是 8 字节对齐的指针数组。</li>
+<li>数组元素可以为空，因为某些类型没有实例字段。</li>
+<li>非空元素指向 <code>int32_t[]</code>，其中的偏移值应处于合理对象布局范围。</li>
+<li><code>typeDefinitionsSizes</code> 指针存在时，布局大小应与类型数量匹配。</li>
+</ul>
+<p>通过这条链路，就可以得到运行时字段偏移表的入口。</p>
+<hr>
+<h2 id="6-字段偏移的动态恢复">6. 字段偏移的动态恢复<a class="anchor" href="#6-字段偏移的动态恢复"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>字段偏移查询的核心公式是：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">fieldOffsets[typeDefIndex][fieldSlot]</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="fieldOffsets[typeDefIndex][fieldSlot]"><div></div></button></div></figure></div>
+<p>其中：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>名称</th><th>来源</th><th>含义</th></tr></thead><tbody><tr><td><code>typeDefIndex</code></td><td>metadata TypeDef 表</td><td>某个 C# 类型在 TypeDef 表中的序号</td></tr><tr><td><code>fieldSlot</code></td><td>TypeDef 的 <code>fieldStart</code> 与字段遍历顺序</td><td>字段在该类型内部的槽位</td></tr><tr><td><code>fieldOffsets</code></td><td>MetadataRegistration</td><td>每个类型对应的运行时字段偏移数组</td></tr></tbody></table>
+<p>查询 <code>UnityEngine.Object::m_CachedPtr</code> 这类字段时，流程是：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">在 metadata 中找到 UnityEngine.Object</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">↓</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">得到 typeDefIndex</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">↓</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">遍历该 TypeDef 的字段列表</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">↓</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">找到 m_CachedPtr 对应的 fieldSlot</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">8</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">↓</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">9</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">读取 fieldOffsets[typeDefIndex][fieldSlot]</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">10</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">↓</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">11</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">得到运行时对象偏移</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="在 metadata 中找到 UnityEngine.Object  ↓得到 typeDefIndex  ↓遍历该 TypeDef 的字段列表  ↓找到 m_CachedPtr 对应的 fieldSlot  ↓读取 fieldOffsets[typeDefIndex][fieldSlot]  ↓得到运行时对象偏移"><div></div></button></div></figure></div>
+<p>这个过程不需要维护 Unity 版本到 offset 的硬编码表。版本差异由目标进程中的 <code>fieldOffsets</code> 自己体现。</p>
+<hr>
+<h2 id="7-struct-和-enum-的偏移修正">7. Struct 和 enum 的偏移修正<a class="anchor" href="#7-struct-和-enum-的偏移修正"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>IL2CPP 中 class 和 value type 的布局语义不同。外部工具读取 struct / enum 字段时，经常需要处理对象头差异带来的偏移修正。</p>
+<p>判断一个类型属于 class、struct 还是 enum，可以从 metadata 的继承关系推导：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>类型</th><th>判断方式</th></tr></thead><tbody><tr><td>class</td><td>普通引用类型，父类不是 <code>System.ValueType</code> / <code>System.Enum</code></td></tr><tr><td>struct</td><td>继承自 <code>System.ValueType</code></td></tr><tr><td>enum</td><td>继承自 <code>System.Enum</code></td></tr></tbody></table>
+<p>因此字段偏移查询要结合类型种类解释 raw offset。同一个 raw offset 在对象实例和 value type 内部视角下可能产生偏差。</p>
+<hr>
+<h2 id="8-alias-查询只是入口优化">8. Alias 查询只是入口优化<a class="anchor" href="#8-alias-查询只是入口优化"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>使用者通常不想每次输入完整类型名。比如写 <code>Object.m_CachedPtr</code> 比写 <code>UnityEngine.Object.m_CachedPtr</code> 更方便。</p>
+<p>alias 映射可以从 metadata 构建：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">UnityEngine.Object → Object</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">System.String → String</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">AssemblyNamespace.PlayerController → PlayerController</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="UnityEngine.Object → ObjectSystem.String → StringAssemblyNamespace.PlayerController → PlayerController"><div></div></button></div></figure></div>
+<p>但短名存在冲突。不同命名空间可能都有同名类型，例如 <code>Object</code>、<code>Vector3</code>、<code>Task</code>。因此 alias 只能在“短名唯一”时启用；一旦冲突，就应该要求调用方使用全名。</p>
+<p>这个设计看起来细，但很重要。字段偏移查询如果因为短名冲突读错类型，后续跨进程读取会直接变成错误地址解释。</p>
+<hr>
+<h2 id="9-缓存与失效条件">9. 缓存与失效条件<a class="anchor" href="#9-缓存与失效条件"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>Registration 和 metadata 查询成本不低，不适合每次字段查询都重建。更合理的方式是第一次查询时构建运行时状态，然后缓存：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">pid</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">GameAssembly base</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">metadataRegistration address</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">fieldOffsets pointer</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">typeName → fieldName → offset</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">alias → fullName</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="pidGameAssembly basemetadataRegistration addressfieldOffsets pointertypeName → fieldName → offsetalias → fullName"><div></div></button></div></figure></div>
+<p>缓存失效条件也必须明确：</p>
+<ul>
+<li>目标进程 PID 改变。</li>
+<li>GameAssembly 基址改变。</li>
+<li>目标重新加载或切换进程。</li>
+<li>Registration 定位失败或 metadata 重新导出失败。</li>
+</ul>
+<p>缓存命中后，字段偏移查询就是普通 map 查询，不再需要重复扫描 GameAssembly。</p>
+<hr>
+<h2 id="10-边界与风险">10. 边界与风险<a class="anchor" href="#10-边界与风险"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>这套方法依赖 IL2CPP 运行时数据结构仍然可读：</p>
+<ul>
+<li><code>MetadataRegistration</code> 必须能定位。</li>
+<li><code>fieldOffsets</code> 没有被加密或虚拟化保护。</li>
+<li>metadata 必须完整，能够建立 typeDef 和 fieldDef 索引。</li>
+<li>Registration 字段顺序必须与目标 Unity 版本匹配。</li>
+<li>静态字段不适用 <code>fieldOffsets</code>，需要查类型静态数据区。</li>
+</ul>
+<p>它也不是反加固万能方案。如果目标对 Registration 表做了结构扰动、字段重排、运行时解密或访问陷阱，单纯数量锚点会失效，需要先分析保护层行为。</p>
+<p>但在常规 Unity 2020-2023 IL2CPP 目标上，metadata + registration 组合已经足够恢复大部分对象布局和方法入口。</p>
+<hr>
+<h2 id="11-结论">11. 结论<a class="anchor" href="#11-结论"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>IL2CPP 外部解析的核心不是单独解析 metadata，也不是单独扫描 registration，而是把两者接成一条链：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">global-metadata.dat</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">→ typeDef / fieldDef / methodDef</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">→ typeDefIndex / fieldSlot / method token</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">→ CodeRegistration / MetadataRegistration</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">→ method pointer / field offset / type size</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="global-metadata.dat  → typeDef / fieldDef / methodDef  → typeDefIndex / fieldSlot / method token  → CodeRegistration / MetadataRegistration  → method pointer / field offset / type size"><div></div></button></div></figure></div>
+<p>metadata 提供“名字和索引”，Registration 提供“地址和布局”。动态字段偏移查询正是利用这个分工：用 metadata 找到字段在类型中的槽位，再用 <code>MetadataRegistration::fieldOffsets</code> 读取运行时偏移。</p>
+<p>这样做的价值是跨版本。外部工具不再需要为每个 Unity 版本维护一份字段 offset 表，而是把目标进程自己的 Registration 当作事实来源。只要 runtime 数据结构可读，字段偏移和方法地址就可以从目标本身恢复出来。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-wy3xnbws> <div class="nav-cell" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/10-il2cpp-metadata-recovery/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 上一篇
+</span> <span class="nav-title" data-astro-cid-wy3xnbws>IL2CPP Metadata 的跨进程定位与类型系统恢复</span> </a> </div> <div class="nav-cell next" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/12-windows-exception-context-dispatch/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws>
+下一篇 <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8594;</span> </span> <span class="nav-title" data-astro-cid-wy3xnbws>Windows 异常机制：异常上下文、分发顺序与可恢复执行</span> </a> </div> </nav> </div> </div>  <footer class="micro" data-astro-cid-cymvyra4> <a class="back" href="/blog/minimalist/" data-astro-cid-cymvyra4> <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8592;</span> 返回技术索引 </a> <span class="copy" data-astro-cid-cymvyra4>&copy; 2026 Shrei</span> <span class="colophon" data-astro-cid-cymvyra4>Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div> </body></html> 

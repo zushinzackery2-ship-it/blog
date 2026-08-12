@@ -1,0 +1,174 @@
+<!DOCTYPE html><html lang="zh-CN" data-astro-cid-cymvyra4> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f2ec"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#151412"><title>MCP 上下文优化：数据压缩与按需加载——字典索引文本格式 · Shrei</title><meta name="description" content="MCP 对话的上下文窗口有限，但工具返回的数据天然膨胀。优化不是少返回字段，而是重新设计数据表示和加载策略。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/07-mcp-context-optimization/"><meta property="og:title" content="MCP 上下文优化：数据压缩与按需加载——字典索引文本格式 · Shrei"><meta property="og:description" content="MCP 对话的上下文窗口有限，但工具返回的数据天然膨胀。优化不是少返回字段，而是重新设计数据表示和加载策略。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/07-mcp-context-optimization/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><!-- 同步主站主题选择：light/dark 显式跟随，auto 或无记录回落系统偏好。
+             data-theme 取 expressive-code 主题名，同时驱动 light-dark() 色板与代码块配色 --><script>
+            (function () {
+                let stored = null;
+                try {
+                    stored = localStorage.getItem('shrei-theme');
+                } catch (_) {
+                    /* 隐私模式下不可用，回落系统偏好 */
+                }
+                const media = window.matchMedia('(prefers-color-scheme: dark)');
+                const apply = () => {
+                    const dark = stored === 'dark' || (stored !== 'light' && media.matches);
+                    document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
+                };
+                apply();
+                if (stored !== 'light' && stored !== 'dark') {
+                    media.addEventListener('change', apply);
+                }
+            })();
+        </script><style>:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}.topbar[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-cymvyra4]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-cymvyra4]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-cymvyra4]:hover{color:var(--red)}.center[data-astro-cid-cymvyra4]{min-width:0;text-align:center}.to-home[data-astro-cid-cymvyra4]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-cymvyra4]:hover{color:var(--red)}.to-home[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(.25em)}footer[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]{transition:color .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover{color:var(--red)}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(-.25em)}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-cymvyra4]{grid-template-columns:1fr auto}.center[data-astro-cid-cymvyra4]{display:none}footer[data-astro-cid-cymvyra4]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:start}}@media print{.topbar[data-astro-cid-cymvyra4] .to-home[data-astro-cid-cymvyra4],footer[data-astro-cid-cymvyra4]{display:none}}
+</style><link rel="stylesheet" href="/blog/astro/_slug_.DPRvZoUD.css"><script type="module" src="/blog/astro/page.DUzMluoR.js"></script></head> <body data-astro-cid-cymvyra4> <div class="frame" data-astro-cid-cymvyra4> <div class="topbar micro" data-astro-cid-cymvyra4> <a class="brand" href="/blog/minimalist/" data-astro-cid-cymvyra4>Shrei — Technical Index</a> <div class="center" data-astro-cid-cymvyra4><span class="topbar-category" data-astro-cid-wy3xnbws>MCP 架构</span></div> <a class="to-home" href="/blog/" data-astro-cid-cymvyra4>
+博客主站 <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-wy3xnbws> <p class="category micro" data-astro-cid-wy3xnbws>MCP 架构</p> <h1 data-astro-cid-wy3xnbws> MCP 上下文优化：数据压缩与按需加载——字典索引文本格式  </h1> <div class="meta micro" data-astro-cid-wy3xnbws> <time datetime="2026-06-05" data-astro-cid-wy3xnbws>2026-06-05</time> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>5 min</span> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>933 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span class="tags" data-astro-cid-wy3xnbws>MCP / AI Tools / Context Optimization / Data Format</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#思路一句话" data-astro-cid-wy3xnbws>思路一句话</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#一上下文压力的来源" data-astro-cid-wy3xnbws>一、上下文压力的来源</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#二工具定义的压缩" data-astro-cid-wy3xnbws>二、工具定义的压缩</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#问题" data-astro-cid-wy3xnbws>问题</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#解法" data-astro-cid-wy3xnbws>解法</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#三返回数据的压缩" data-astro-cid-wy3xnbws>三、返回数据的压缩</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#问题-1" data-astro-cid-wy3xnbws>问题</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#解法字典索引文本" data-astro-cid-wy3xnbws>解法：字典索引文本</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#四按需加载不同场景用不同焦距" data-astro-cid-wy3xnbws>四、按需加载：不同场景用不同”焦距”</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#五按需附加不需要的上下文不携带" data-astro-cid-wy3xnbws>五、按需附加：不需要的上下文不携带</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#六response-mode同一接口的不同焦距" data-astro-cid-wy3xnbws>六、Response Mode：同一接口的不同”焦距”</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#七小结" data-astro-cid-wy3xnbws>七、小结</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+</a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <blockquote><p>MCP 对话的上下文窗口有限，但工具返回的数据天然膨胀。优化不是”少返回点字段”，而是重新设计数据表示和加载策略：字段名字典化、数字索引替代长字符串、视觉符号表达结构、不同场景用不同”焦距”。</p></blockquote>
+<hr>
+<h2 id="思路一句话">思路一句话<a class="anchor" href="#思路一句话"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>上下文优化不是”少返回字段”，而是三层重构：工具定义层（常驻菜单→按需查询）、数据表示层（嵌套 JSON→字典索引文本）、加载策略层（一刀切→分层按需）。字典索引文本让字段名只出现一次，数字索引替代长字符串。</p>
+<hr>
+<h2 id="一上下文压力的来源">一、上下文压力的来源<a class="anchor" href="#一上下文压力的来源"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>Agent 与 MCP Server 交互时，上下文被三部分占用：</p>
+<ol>
+<li><strong>工具定义</strong> —— <code>list_tools</code> 返回的 schema</li>
+<li><strong>请求参数</strong> —— Agent 构造的调用参数</li>
+<li><strong>工具返回</strong> —— Server 返回的数据</li>
+</ol>
+<p>传统优化只关注第 3 部分（压缩返回数据）。但第 1 部分（工具定义常驻）和第 3 部分（返回格式膨胀）同样重要。</p>
+<hr>
+<h2 id="二工具定义的压缩">二、工具定义的压缩<a class="anchor" href="#二工具定义的压缩"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<h3 id="问题">问题<a class="anchor" href="#问题"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<p>50 个工具，每个带 schema、示例、错误码，常驻上下文数千 token。</p>
+<h3 id="解法">解法<a class="anchor" href="#解法"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<p>工具面分层：</p>
+<div class="expressive-code"><link rel="stylesheet" href="/blog/astro/ec.iz9dg.css"><script type="module" src="/blog/astro/ec.0vx5m.js"></script><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">公开层：4-6 个 facade 工具（常驻上下文）</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">查询层：capability_get（按需拉取，用后即弃）</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">执行层：内部 operation（不进入 list_tools）</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="公开层：4-6 个 facade 工具（常驻上下文）查询层：capability_get（按需拉取，用后即弃）执行层：内部 operation（不进入 list_tools）"><div></div></button></div></figure></div>
+<p>工具定义从”常驻配置”变成”可丢弃的查询结果”。</p>
+<hr>
+<h2 id="三返回数据的压缩">三、返回数据的压缩<a class="anchor" href="#三返回数据的压缩"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<h3 id="问题-1">问题<a class="anchor" href="#问题-1"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<p>复杂对象用 JSON 表示，字段名反复出现：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">{</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent">  </span><span style="--0:#79B8FF;--1:#005CC5">"nodes"</span><span style="--0:#E1E4E8;--1:#24292E">: [</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">{ </span><span style="--0:#79B8FF;--1:#005CC5">"node_id"</span><span style="--0:#E1E4E8;--1:#24292E">: </span><span style="--0:#9ECBFF;--1:#032F62">"n0"</span><span style="--0:#E1E4E8;--1:#24292E">, </span><span style="--0:#79B8FF;--1:#005CC5">"class_name"</span><span style="--0:#E1E4E8;--1:#24292E">: </span><span style="--0:#9ECBFF;--1:#032F62">"InputNode"</span><span style="--0:#E1E4E8;--1:#24292E">, </span><span style="--0:#79B8FF;--1:#005CC5">"display_name"</span><span style="--0:#E1E4E8;--1:#24292E">: </span><span style="--0:#9ECBFF;--1:#032F62">"Input_0"</span><span style="--0:#E1E4E8;--1:#24292E"> },</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">{ </span><span style="--0:#79B8FF;--1:#005CC5">"node_id"</span><span style="--0:#E1E4E8;--1:#24292E">: </span><span style="--0:#9ECBFF;--1:#032F62">"n1"</span><span style="--0:#E1E4E8;--1:#24292E">, </span><span style="--0:#79B8FF;--1:#005CC5">"class_name"</span><span style="--0:#E1E4E8;--1:#24292E">: </span><span style="--0:#9ECBFF;--1:#032F62">"ProcessNode"</span><span style="--0:#E1E4E8;--1:#24292E">, </span><span style="--0:#79B8FF;--1:#005CC5">"display_name"</span><span style="--0:#E1E4E8;--1:#24292E">: </span><span style="--0:#9ECBFF;--1:#032F62">"Process_0"</span><span style="--0:#E1E4E8;--1:#24292E"> }</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">  </span></span><span style="--0:#E1E4E8;--1:#24292E">]</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">}</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="{  &#x22;nodes&#x22;: [    { &#x22;node_id&#x22;: &#x22;n0&#x22;, &#x22;class_name&#x22;: &#x22;InputNode&#x22;, &#x22;display_name&#x22;: &#x22;Input_0&#x22; },    { &#x22;node_id&#x22;: &#x22;n1&#x22;, &#x22;class_name&#x22;: &#x22;ProcessNode&#x22;, &#x22;display_name&#x22;: &#x22;Process_0&#x22; }  ]}"><div></div></button></div></figure></div>
+<p>每个节点都重复 <code>"node_id"</code>、<code>"class_name"</code>、<code>"display_name"</code>。</p>
+<h3 id="解法字典索引文本">解法：字典索引文本<a class="anchor" href="#解法字典索引文本"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">T:0=InputNode;1=ProcessNode;2=OutputNode</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">N:0:0:Roughness;1:1:Multiply_00;2:2:Clamp_00</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">V:0:0=1.0;1=Roughness|1:2=0.5</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">E:0.o>1.A;1.o>2.Input</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="T:0=InputNode;1=ProcessNode;2=OutputNodeN:0:0:Roughness;1:1:Multiply_00;2:2:Clamp_00V:0:0=1.0;1=Roughness|1:2=0.5E:0.o>1.A;1.o>2.Input"><div></div></button></div></figure></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th align="left">段</th><th align="left">含义</th></tr></thead><tbody><tr><td align="left"><code>T</code></td><td align="left">类型字典：<code>索引=类名</code></td></tr><tr><td align="left"><code>N</code></td><td align="left">节点表：<code>索引:类型索引:显示名</code></td></tr><tr><td align="left"><code>V</code></td><td align="left">参数值表：<code>节点索引:参数字段=值</code></td></tr><tr><td align="left"><code>E</code></td><td align="left">连线表：<code>源节点.输出>目标节点.输入</code></td></tr></tbody></table>
+<p>字段名只在字典中出现一次。节点引用用数字索引。视觉符号表达结构。</p>
+<hr>
+<h2 id="四按需加载不同场景用不同焦距">四、按需加载：不同场景用不同”焦距”<a class="anchor" href="#四按需加载不同场景用不同焦距"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>不是一刀切返回同一种格式，而是按场景选择：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th align="left">场景</th><th align="left">格式</th><th align="left">内容</th></tr></thead><tbody><tr><td align="left">导航找节点</td><td align="left"><code>tiny</code></td><td align="left">极简节点字典 + 边表</td></tr><tr><td align="left">整图复刻</td><td align="left"><code>indexed</code></td><td align="left">字典索引文本，不带位置</td></tr><tr><td align="left">人读概览</td><td align="left"><code>grouped</code></td><td align="left">按类型聚合，只返回输入视角</td></tr><tr><td align="left">编辑单节点</td><td align="left"><code>detail</code></td><td align="left">完整节点视图</td></tr><tr><td align="left">调试排错</td><td align="left"><code>full</code></td><td align="left">完整字段和真实 ID</td></tr></tbody></table>
+<p>这套”焦距”分级让导航、复刻、精读各取所需，不必每次都返回同一种格式。</p>
+<hr>
+<h2 id="五按需附加不需要的上下文不携带">五、按需附加：不需要的上下文不携带<a class="anchor" href="#五按需附加不需要的上下文不携带"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>可选段默认不返回，需要时显式开启：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">X:0=-1632,576;1=-1440,560     ← include_position=true 时附加</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">R:0=027ED24D-4C03-E1A4...     ← id_mode=real 时附加</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="X:0=-1632,576;1=-1440,560     ← include_position=true 时附加R:0=027ED24D-4C03-E1A4...     ← id_mode=real 时附加"><div></div></button></div></figure></div>
+<p>位置、真实 ID、完整诊断等大段数据按需附加，不默认携带。</p>
+<hr>
+<h2 id="六response-mode同一接口的不同焦距">六、Response Mode：同一接口的不同”焦距”<a class="anchor" href="#六response-mode同一接口的不同焦距"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>同一工具支持多种返回粒度：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th align="left">Mode</th><th align="left">行为</th></tr></thead><tbody><tr><td align="left"><code>silent</code></td><td align="left">只返回成功/失败、错误计数</td></tr><tr><td align="left"><code>brief</code></td><td align="left">返回一句摘要</td></tr><tr><td align="left"><code>delta</code></td><td align="left">返回变更摘要和 diff token</td></tr><tr><td align="left"><code>summary</code></td><td align="left">返回当前状态摘要</td></tr><tr><td align="left"><code>full</code></td><td align="left">返回完整 data 负载</td></tr><tr><td align="left"><code>debug</code></td><td align="left">返回完整 envelope</td></tr></tbody></table>
+<p>写操作默认 <code>delta</code>。Agent 不需要完整状态，只需要”改了什么”。</p>
+<hr>
+<h2 id="七小结">七、小结<a class="anchor" href="#七小结"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>上下文优化不是”少返回点字段”，而是三层重构：</p>
+<ol>
+<li><strong>工具定义层</strong>：从常驻菜单变成按需查询</li>
+<li><strong>数据表示层</strong>：从嵌套 JSON 变成字典索引文本</li>
+<li><strong>加载策略层</strong>：从一刀切返回变成分层、按需、可调焦距</li>
+</ol>
+<p>落到实处就是几件事：字段名只出现一次，状态留在服务端，Agent 只持 token，完整数据按需精读。</p>
+<hr>
+<p><em>实践来源：一个 MCP 桥接项目，支持 7 种图数据格式、6 种 response mode、4 级 capability 查询。</em></p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-wy3xnbws> <div class="nav-cell" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/06-mcp-communication-design/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 上一篇
+</span> <span class="nav-title" data-astro-cid-wy3xnbws>MCP 上下文返回优化：声明式编辑与状态分离——Diff-Token 机制</span> </a> </div> <div class="nav-cell next" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/13-mcp-communication-design/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws>
+下一篇 <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8594;</span> </span> <span class="nav-title" data-astro-cid-wy3xnbws>MCP 通信设计：Server-First 架构与命名管道实现</span> </a> </div> </nav> </div> </div>  <footer class="micro" data-astro-cid-cymvyra4> <a class="back" href="/blog/minimalist/" data-astro-cid-cymvyra4> <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8592;</span> 返回技术索引 </a> <span class="copy" data-astro-cid-cymvyra4>&copy; 2026 Shrei</span> <span class="colophon" data-astro-cid-cymvyra4>Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div> </body></html> 
