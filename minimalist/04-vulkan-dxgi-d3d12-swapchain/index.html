@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="zh-CN" data-astro-cid-cymvyra4> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f2ec"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#151412"><title>Vulkan 游戏中 DXGI/D3D12 Swapchain 的来源分析 · Shrei</title><meta name="description" content="使用 Vulkan 渲染的游戏，在抓帧或调试工具中却可能出现 DXGI/D3D12 相关对象。本文通过静态逆向分析，定位这些对象的来源路径，并给出排查方法。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/04-vulkan-dxgi-d3d12-swapchain/"><meta property="og:title" content="Vulkan 游戏中 DXGI/D3D12 Swapchain 的来源分析 · Shrei"><meta property="og:description" content="使用 Vulkan 渲染的游戏，在抓帧或调试工具中却可能出现 DXGI/D3D12 相关对象。本文通过静态逆向分析，定位这些对象的来源路径，并给出排查方法。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/04-vulkan-dxgi-d3d12-swapchain/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><!-- 同步主站主题选择：light/dark 显式跟随，auto 或无记录回落系统偏好。
+<!DOCTYPE html><html lang="zh-CN" data-astro-cid-cymvyra4> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f2ec"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#151412"><title>Vulkan 游戏中 DXGI/D3D12 Swapchain 的来源分析 · Shrei</title><meta name="description" content="Vulkan 游戏在抓帧或 Hook 时常能命中 DXGI/D3D12 Present。基于 nvoglv64.dll 的静态逆向，定位 NVIDIA 驱动把 Vulkan 渲染结果桥接到内部 DXGI/D3D12 呈现层的路径。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/04-vulkan-dxgi-d3d12-swapchain/"><meta property="og:title" content="Vulkan 游戏中 DXGI/D3D12 Swapchain 的来源分析 · Shrei"><meta property="og:description" content="Vulkan 游戏在抓帧或 Hook 时常能命中 DXGI/D3D12 Present。基于 nvoglv64.dll 的静态逆向，定位 NVIDIA 驱动把 Vulkan 渲染结果桥接到内部 DXGI/D3D12 呈现层的路径。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/04-vulkan-dxgi-d3d12-swapchain/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><!-- 同步主站主题选择：light/dark 显式跟随，auto 或无记录回落系统偏好。
              data-theme 取 expressive-code 主题名，同时驱动 light-dark() 色板与代码块配色 --><script>
             (function () {
                 let stored = null;
@@ -18,217 +18,153 @@
                 }
             })();
         </script><style>:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}.topbar[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-cymvyra4]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-cymvyra4]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-cymvyra4]:hover{color:var(--red)}.center[data-astro-cid-cymvyra4]{min-width:0;text-align:center}.to-home[data-astro-cid-cymvyra4]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-cymvyra4]:hover{color:var(--red)}.to-home[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(.25em)}footer[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]{transition:color .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover{color:var(--red)}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(-.25em)}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-cymvyra4]{grid-template-columns:1fr auto}.center[data-astro-cid-cymvyra4]{display:none}footer[data-astro-cid-cymvyra4]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:start}}@media print{.topbar[data-astro-cid-cymvyra4] .to-home[data-astro-cid-cymvyra4],footer[data-astro-cid-cymvyra4]{display:none}}
-</style><link rel="stylesheet" href="/blog/astro/_slug_.DPRvZoUD.css"><script type="module" src="/blog/astro/page.DUzMluoR.js"></script></head> <body data-astro-cid-cymvyra4> <div class="frame" data-astro-cid-cymvyra4> <div class="topbar micro" data-astro-cid-cymvyra4> <a class="brand" href="/blog/minimalist/" data-astro-cid-cymvyra4>Shrei — Technical Index</a> <div class="center" data-astro-cid-cymvyra4><span class="topbar-category" data-astro-cid-wy3xnbws>图形逆向</span></div> <a class="to-home" href="/blog/" data-astro-cid-cymvyra4>
-博客主站 <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-wy3xnbws> <p class="category micro" data-astro-cid-wy3xnbws>图形逆向</p> <h1 data-astro-cid-wy3xnbws> Vulkan 游戏中 DXGI/D3D12 Swapchain 的来源分析  </h1> <div class="meta micro" data-astro-cid-wy3xnbws> <time datetime="2026-06-02" data-astro-cid-wy3xnbws>2026-06-02</time> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>7 min</span> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>1,963 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span class="tags" data-astro-cid-wy3xnbws>Reverse Engineering / Graphics / Vulkan / DXGI / D3D12 / NVIDIA</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#结论先放这里" data-astro-cid-wy3xnbws>结论先放这里</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#一问题描述" data-astro-cid-wy3xnbws>一、问题描述</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#二windows-图形栈的分层结构" data-astro-cid-wy3xnbws>二、Windows 图形栈的分层结构</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#三可能引入-dxgi-对象的模块" data-astro-cid-wy3xnbws>三、可能引入 DXGI 对象的模块</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#四nvidia-驱动路径最可能来源" data-astro-cid-wy3xnbws>四、NVIDIA 驱动路径（最可能来源）</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#41-vulkan-icd-与-present-layer" data-astro-cid-wy3xnbws>4.1 Vulkan ICD 与 Present Layer</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#42-d3dkmt-边界" data-astro-cid-wy3xnbws>4.2 D3DKMT 边界</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#43-dxgi-factory-能力" data-astro-cid-wy3xnbws>4.3 DXGI Factory 能力</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#44-路径总结" data-astro-cid-wy3xnbws>4.4 路径总结</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#五overlay-路径" data-astro-cid-wy3xnbws>五、Overlay 路径</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#51-steam-overlay" data-astro-cid-wy3xnbws>5.1 Steam Overlay</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#52-obs-capture" data-astro-cid-wy3xnbws>5.2 OBS Capture</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#六来源判断" data-astro-cid-wy3xnbws>六、来源判断</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#七精确来源的确认方法" data-astro-cid-wy3xnbws>七、精确来源的确认方法</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#八排查建议" data-astro-cid-wy3xnbws>八、排查建议</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#九结论" data-astro-cid-wy3xnbws>九、结论</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
-</a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <blockquote><p>使用 Vulkan 渲染的游戏（如《终末地》），在抓帧或调试工具中却可能出现 DXGI/D3D12 相关对象。本文通过静态逆向分析，定位这些对象的来源路径，并给出排查方法。</p></blockquote>
+</style><link rel="stylesheet" href="/blog/astro/_slug_.Cj97UYPf.css"><script type="module" src="/blog/astro/page.DUzMluoR.js"></script></head> <body data-astro-cid-cymvyra4> <div class="frame" data-astro-cid-cymvyra4> <div class="topbar micro" data-astro-cid-cymvyra4> <a class="brand" href="/blog/minimalist/" data-astro-cid-cymvyra4>Shrei — Technical Index</a> <div class="center" data-astro-cid-cymvyra4><span class="topbar-category" data-astro-cid-wy3xnbws>图形逆向</span></div> <a class="to-home" href="/blog/" data-astro-cid-cymvyra4>
+博客主站 <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-wy3xnbws> <p class="category micro" data-astro-cid-wy3xnbws>图形逆向</p> <h1 data-astro-cid-wy3xnbws> Vulkan 游戏中 DXGI/D3D12 Swapchain 的来源分析  </h1> <div class="meta micro" data-astro-cid-wy3xnbws> <time datetime="2026-06-02" data-astro-cid-wy3xnbws>2026-06-02</time> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>11 min</span> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>4,804 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span class="tags" data-astro-cid-wy3xnbws>Reverse Engineering / Graphics / Vulkan / DXGI / D3D12 / NVIDIA</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#现象" data-astro-cid-wy3xnbws>现象</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#结论" data-astro-cid-wy3xnbws>结论</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#逆向样本与边界" data-astro-cid-wy3xnbws>逆向样本与边界</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#交换链图像由-vulkan-路径创建" data-astro-cid-wy3xnbws>交换链图像由 Vulkan 路径创建</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#最终呈现由-dxgid3d12-路径提交" data-astro-cid-wy3xnbws>最终呈现由 DXGI/D3D12 路径提交</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#驱动内部的模块分工" data-astro-cid-wy3xnbws>驱动内部的模块分工</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#与-vulkan-被转译成-d3d12-的区别" data-astro-cid-wy3xnbws>与 Vulkan 被转译成 D3D12 的区别</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#工程含义present-hook-与-overlay" data-astro-cid-wy3xnbws>工程含义：Present Hook 与 Overlay</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#运行态确认方法" data-astro-cid-wy3xnbws>运行态确认方法</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#证据边界" data-astro-cid-wy3xnbws>证据边界</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+</a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <blockquote><p>Vulkan 渲染的游戏，在抓帧工具、Overlay 或 Present Hook 中常能命中 DXGI/D3D12 对象。基于对 NVIDIA 用户态驱动 <code>nvoglv64.dll</code> 的静态逆向，这些对象来自驱动内部的呈现路径：Vulkan 完成渲染，驱动把最终图像接到内部的 DXGI/D3D12 呈现层输出。</p></blockquote>
 <hr>
-<h2 id="结论先放这里">结论先放这里<a class="anchor" href="#结论先放这里"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>Vulkan 游戏中出现 DXGI/D3D12 对象的最可能来源是 NVIDIA 驱动路径：Vulkan present 经 <code>VK_LAYER_NV_present</code> 进入 Windows WSI 显示栈，<code>nvwgf2umx.dll</code> 具备 <code>CreateDXGIFactory2</code> 能力参与 DXGI factory 流程。这是 Windows 图形栈分层架构的正常现象。Overlay 层可能介入，但只有 NVIDIA 驱动路径具备明确的 DXGI 创建能力。</p>
-<hr>
-<h2 id="一问题描述">一、问题描述<a class="anchor" href="#一问题描述"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>在分析 Vulkan 渲染的游戏时，常观察到以下现象：</p>
+<h2 id="现象">现象<a class="anchor" href="#现象"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>在 NVIDIA 平台分析 Vulkan 游戏时，常见三类观察：</p>
 <ul>
-<li>抓帧工具（RenderDoc、PIX）中出现 <code>IDXGISwapChain</code> 对象</li>
-<li>进程监控工具显示加载了 <code>d3d12.dll</code></li>
-<li>内存分析器中发现 <code>ID3D12Device</code> 实例</li>
+<li>抓帧工具（RenderDoc、PIX）里出现 <code>IDXGISwapChain</code> 对象。</li>
+<li>进程加载了 <code>d3d12.dll</code>，内存中存在 <code>ID3D12Device</code> 实例。</li>
+<li>在 <code>DXGI</code> / <code>D3D12</code> 的 <code>Present</code> 上挂 Overlay、录屏、延迟统计都能正常工作。</li>
 </ul>
-<p>这些对象并非由游戏业务代码直接创建，而是来自驱动层或 overlay 层的间接引入。本文通过静态证据分析其来源。</p>
+<p>游戏业务代码只调用了 Vulkan，这些对象不由它直接创建。问题是它们从哪条路径进入进程。</p>
 <hr>
-<h2 id="二windows-图形栈的分层结构">二、Windows 图形栈的分层结构<a class="anchor" href="#二windows-图形栈的分层结构"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>理解这个问题的关键是认识到 Windows 图形栈的分层：</p>
-<div class="expressive-code"><link rel="stylesheet" href="/blog/astro/ec.iz9dg.css"><script type="module" src="/blog/astro/ec.0vx5m.js"></script><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">应用层：游戏代码（调用 Vulkan API）</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">↓</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">API 层：vulkan-1.dll（Vulkan Loader）</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">↓</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">驱动用户态：nvoglv64.dll（NVIDIA Vulkan ICD + Present Layer）</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">↓</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">系统显示栈：WDDM / DXGI / DWM</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">8</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">↓</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">9</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">驱动内核态：nvlddmkm.sys（WDDM Miniport）</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="应用层：游戏代码（调用 Vulkan API）  ↓API 层：vulkan-1.dll（Vulkan Loader）  ↓驱动用户态：nvoglv64.dll（NVIDIA Vulkan ICD + Present Layer）  ↓系统显示栈：WDDM / DXGI / DWM  ↓驱动内核态：nvlddmkm.sys（WDDM Miniport）"><div></div></button></div></figure></div>
-<p>Vulkan 是渲染 API，负责”画什么”。Windows 显示基础设施（WDDM/DXGI/DWM）负责”怎么显示到屏幕上”。两者不是替代关系，而是上下层关系。</p>
-<hr>
-<h2 id="三可能引入-dxgi-对象的模块">三、可能引入 DXGI 对象的模块<a class="anchor" href="#三可能引入-dxgi-对象的模块"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>对游戏进程可能加载的模块进行静态分析，以下模块具备引入 DXGI 对象的能力：</p>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<table><thead><tr><th>模块</th><th>类型</th><th>DXGI/D3D 相关能力</th></tr></thead><tbody><tr><td><code>nvwgf2umx.dll</code></td><td>NVIDIA D3D UMD</td><td>静态导入 <code>CreateDXGIFactory2</code>，代码区存在 IAT 跳板</td></tr><tr><td><code>SteamOverlayVulkanLayer64.dll</code></td><td>Steam Overlay</td><td>拦截 Vulkan present，但无静态 D3D/DXGI 创建入口</td></tr><tr><td><code>graphics-hook64.dll</code></td><td>OBS Capture</td><td>纯 capture，无静态 D3D/DXGI 创建入口</td></tr></tbody></table>
-<p>下面逐项分析。</p>
-<hr>
-<h2 id="四nvidia-驱动路径最可能来源">四、NVIDIA 驱动路径（最可能来源）<a class="anchor" href="#四nvidia-驱动路径最可能来源"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<h3 id="41-vulkan-icd-与-present-layer">4.1 Vulkan ICD 与 Present Layer<a class="anchor" href="#41-vulkan-icd-与-present-layer"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
-<p><code>vulkan-1.dll</code> 通过 <code>nv-vk64.json</code> 找到 <code>nvoglv64.dll</code>。该 DLL 同时承担：</p>
+<h2 id="结论">结论<a class="anchor" href="#结论"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
 <ul>
-<li>Vulkan ICD（标准 Vulkan 驱动入口）</li>
-<li><code>VK_LAYER_NV_optimus</code>（双显卡切换层）</li>
-<li><code>VK_LAYER_NV_present</code> / GR2608（Present 处理层）</li>
+<li>交换链图像由 Vulkan 路径创建并绑定内存，主渲染资源留在 Vulkan 一侧。</li>
+<li>最终 present 由驱动内部的 DXGI/D3D12 呈现路径提交到窗口。</li>
+<li>因此进程里的 DXGI/D3D12 对象来自 NVIDIA 驱动的呈现路径，既非游戏业务代码创建，也不代表 Vulkan 被转译成了 D3D12。</li>
 </ul>
-<p>Present Layer 的入口函数：</p>
-<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">vk_gr2608GetInstanceProcAddr</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">vk_gr2608GetDeviceProcAddr</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="vk_gr2608GetInstanceProcAddrvk_gr2608GetDeviceProcAddr"><div></div></button></div></figure></div>
-<p>这说明 NVIDIA 在标准 Vulkan ICD 之外，插入了一个专门处理 present 的层。</p>
-<h3 id="42-d3dkmt-边界">4.2 D3DKMT 边界<a class="anchor" href="#42-d3dkmt-边界"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
-<p><code>nvoglv64.dll</code> 静态导入 <code>GDI32.dll!D3DKMTEnumAdapters2</code>，且代码区存在 IAT 跳板：</p>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<table><thead><tr><th>模块</th><th>边界 API</th><th>指令</th></tr></thead><tbody><tr><td><code>nvoglv64.dll</code></td><td><code>D3DKMTEnumAdapters2</code></td><td><code>jmp qword ptr [rip + ...]</code></td></tr></tbody></table>
-<p>D3DKMT 是 WDDM 用户态接口。Vulkan 驱动枚举适配器，说明它需要与 Windows 显示基础设施交互。</p>
-<h3 id="43-dxgi-factory-能力">4.3 DXGI Factory 能力<a class="anchor" href="#43-dxgi-factory-能力"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
-<p><code>nvwgf2umx.dll</code> 是 NVIDIA D3D 用户态驱动，具备明确的 DXGI 能力：</p>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<table><thead><tr><th>模块</th><th>边界 API</th><th>指令</th></tr></thead><tbody><tr><td><code>nvwgf2umx.dll</code></td><td><code>CreateDXGIFactory2</code></td><td><code>jmp qword ptr [rip + ...]</code></td></tr><tr><td><code>nvwgf2umx.dll</code></td><td><code>GetDisplayConfigBufferSizes</code></td><td><code>call qword ptr [rip + ...]</code></td></tr><tr><td><code>nvwgf2umx.dll</code></td><td><code>QueryDisplayConfig</code></td><td><code>call qword ptr [rip + ...]</code></td></tr></tbody></table>
-<p><code>CreateDXGIFactory2</code> 是创建 DXGI 对象的标准入口。代码区存在 IAT 跳板，说明这不是单纯的导入表存在，而是实际会执行的代码路径。</p>
-<h3 id="44-路径总结">4.4 路径总结<a class="anchor" href="#44-路径总结"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
-<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">游戏调用 vkQueuePresentKHR</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">↓</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">nvoglv64.dll (Vulkan ICD + VK_LAYER_NV_present)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">↓</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">Windows WSI / WDDM 显示栈</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">↓</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">nvwgf2umx.dll (NVIDIA D3D UMD，具备 CreateDXGIFactory2)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">8</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">↓</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">9</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">出现 DXGI 相关对象</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="游戏调用 vkQueuePresentKHR  ↓nvoglv64.dll (Vulkan ICD + VK_LAYER_NV_present)  ↓Windows WSI / WDDM 显示栈  ↓nvwgf2umx.dll (NVIDIA D3D UMD，具备 CreateDXGIFactory2)  ↓出现 DXGI 相关对象"><div></div></button></div></figure></div>
-<p>Vulkan present 最终必须进入 Windows 显示栈。NVIDIA D3D UMD 参与 DXGI factory 流程时，会创建或引用 DXGI 对象。这是 Windows 图形栈分层架构的正常行为，不是异常。</p>
+<p>这条路径同时解释了工程现象：在 NVIDIA 平台，Vulkan 游戏的 present 会落到驱动内部的 DXGI/D3D12 呈现对象上，所以在这一层做 Hook 往往有效。</p>
 <hr>
-<h2 id="五overlay-路径">五、Overlay 路径<a class="anchor" href="#五overlay-路径"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<h3 id="51-steam-overlay">5.1 Steam Overlay<a class="anchor" href="#51-steam-overlay"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
-<p>导出表显示它拦截 Vulkan present：</p>
-<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">vkCreateSwapchainKHR</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">vkQueuePresentKHR</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">vkCreateWin32SurfaceKHR</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="vkCreateSwapchainKHRvkQueuePresentKHRvkCreateWin32SurfaceKHR"><div></div></button></div></figure></div>
-<p>但当前样本中未静态导入 DXGI/D3D11/D3D12 创建入口。它能改写 Vulkan present 行为，但没有直接创建 DXGI 对象的证据。</p>
-<h3 id="52-obs-capture">5.2 OBS Capture<a class="anchor" href="#52-obs-capture"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
-<p>只有 Vulkan layer negotiate 入口，当前样本中无静态 D3D/DXGI 创建入口。</p>
+<h2 id="逆向样本与边界">逆向样本与边界<a class="anchor" href="#逆向样本与边界"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>结论基于对 <code>nvoglv64.dll</code>（NVIDIA 用户态 GL/Vulkan 驱动）的静态逆向，观察对象是交换链创建、交换链图像内存绑定、present 排队与呈现线程提交四个环节。</p>
+<p>需要先划清边界：这是当前驱动版本的实现模型，足以解释多数 Vulkan 游戏的 present 行为，但不覆盖所有驱动版本、GPU 型号和 Windows 版本。全部证据来自静态结构，不含运行期调用栈或内核态观测。</p>
 <hr>
-<h2 id="六来源判断">六、来源判断<a class="anchor" href="#六来源判断"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<table><thead><tr><th>来源</th><th>能创建 DXGI</th><th>能创建 D3D12</th><th>证据强度</th></tr></thead><tbody><tr><td>NVIDIA 驱动 (<code>nvwgf2umx.dll</code>)</td><td>是，<code>CreateDXGIFactory2</code> IAT</td><td>间接可能</td><td>高</td></tr><tr><td>Steam Overlay</td><td>否，无静态证据</td><td>否</td><td>低</td></tr><tr><td>OBS Capture</td><td>否</td><td>否</td><td>低</td></tr><tr><td>游戏自身</td><td>无 Vulkan 引擎直接创建 D3D12 证据</td><td>无</td><td>低</td></tr></tbody></table>
-<p>最可能的来源是 NVIDIA 驱动路径：Vulkan present 经 WSI 进入 Windows 显示栈，NVIDIA D3D UMD 参与 DXGI factory 流程，间接触发 DXGI 对象的创建。</p>
+<h2 id="交换链图像由-vulkan-路径创建">交换链图像由 Vulkan 路径创建<a class="anchor" href="#交换链图像由-vulkan-路径创建"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>判断主渲染在哪一侧，关键不在驱动是否加载 <code>dxgi.dll</code>，而在交换链图像由谁创建、图像内存由谁绑定。两个函数给出直接证据。</p>
+<p><code>CreateVulkanSwapchainApiImages</code>（<code>0x180DD6A60</code>）创建交换链图像对象，内部调用 <code>CreateSwapchainApiImageObject</code>，失败路径打印 <code>Failed to create swapchain API image (%s)</code>。这里创建的是 Vulkan 侧的交换链图像对象，而不是包装一个现成的 D3D12 纹理。</p>
+<p><code>CreateAndBindVulkanSwapchainImageMemory</code>（<code>0x180DD5FB0</code>）处理这些图像的内存，调用链固定为三步：</p>
+<div class="expressive-code"><link rel="stylesheet" href="/blog/astro/ec.iz9dg.css"><script type="module" src="/blog/astro/ec.0vx5m.js"></script><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">BuildSwapchainImageMemoryRequirements(...)   // 内存需求计算</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">CreateSwapchainImageMemoryObject(...)        // 内存对象创建</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">BindSwapchainImageMemory(...)                // 内存绑定</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="BuildSwapchainImageMemoryRequirements(...)   // 内存需求计算CreateSwapchainImageMemoryObject(...)        // 内存对象创建BindSwapchainImageMemory(...)                // 内存绑定"><div></div></button></div></figure></div>
+<p>失败路径的字符串为 <code>Failed to create swapchain image device memory (%s)</code> 与 <code>Failed to bind swapchain image (%s)</code>。图像的内存需求、内存对象、内存绑定全部走 Vulkan 侧。若由 D3D12 承担主渲染，更自然的实现是以 D3D12 资源为主对象、Vulkan 侧只做互操作包装；当前实现顺序相反，主渲染资源模型在 Vulkan 一侧。</p>
 <hr>
-<h2 id="七精确来源的确认方法">七、精确来源的确认方法<a class="anchor" href="#七精确来源的确认方法"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>静态分析可以缩小范围，确认精确来源需要运行态证据。在以下 API 上设置断点，记录调用栈：</p>
-<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">dxgi.dll!CreateDXGIFactory</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">dxgi.dll!CreateDXGIFactory1</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">dxgi.dll!CreateDXGIFactory2</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">IDXGIFactory::CreateSwapChain</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">IDXGIFactory2::CreateSwapChainForHwnd</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">d3d12.dll!D3D12CreateDevice</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">d3d11.dll!D3D11CreateDevice</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">8</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">d3d11.dll!D3D11CreateDeviceAndSwapChain</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">9</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">vkQueuePresentKHR</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">10</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">vkCreateSwapchainKHR</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="dxgi.dll!CreateDXGIFactorydxgi.dll!CreateDXGIFactory1dxgi.dll!CreateDXGIFactory2IDXGIFactory::CreateSwapChainIDXGIFactory2::CreateSwapChainForHwndd3d12.dll!D3D12CreateDeviced3d11.dll!D3D11CreateDeviced3d11.dll!D3D11CreateDeviceAndSwapChainvkQueuePresentKHRvkCreateSwapchainKHR"><div></div></button></div></figure></div>
-<p>根据调用栈落点判断来源：</p>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<table><thead><tr><th>调用栈落点</th><th>来源判断</th></tr></thead><tbody><tr><td><code>nvoglv64.dll</code> / <code>nvwgf2umx.dll</code></td><td>NVIDIA 驱动 present 路径</td></tr><tr><td><code>SteamOverlayVulkanLayer64.dll</code></td><td>Steam overlay</td></tr><tr><td><code>graphics-hook64.dll</code></td><td>OBS capture</td></tr><tr><td><code>UnityPlayer.dll</code> / <code>GameAssembly.dll</code></td><td>游戏/引擎显式桥接</td></tr></tbody></table>
-<hr>
-<h2 id="八排查建议">八、排查建议<a class="anchor" href="#八排查建议"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>Vulkan 游戏中出现 DXGI/D3D12 对象时，排查顺序如下：</p>
-<ol>
-<li>确认显卡厂商：NVIDIA 驱动有 Present Layer，AMD/Intel 的架构可能不同</li>
-<li>检查 overlay：关闭 Steam、Discord 等 overlay 后是否仍出现</li>
-<li>抓运行态调用栈：在 <code>CreateDXGIFactory2</code> 和 <code>D3D12CreateDevice</code> 上断点，看 caller module</li>
-<li>区分 D3D11 和 D3D12：D3D11 对象可能来自 overlay，D3D12 对象更可能来自驱动路径</li>
-</ol>
-<hr>
-<h2 id="九结论">九、结论<a class="anchor" href="#九结论"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>Vulkan 游戏中出现 DXGI/D3D12 对象，通常不是异常，而是 Windows 图形栈分层架构的正常表现：</p>
+<h2 id="最终呈现由-dxgid3d12-路径提交">最终呈现由 DXGI/D3D12 路径提交<a class="anchor" href="#最终呈现由-dxgid3d12-路径提交"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>图像渲染完成后，把它交给窗口系统的是另一条路径，核心函数是 <code>DxgiSwapchainQueuePresent</code>（<code>0x180DE27A0</code>）。</p>
+<p>它不构造场景资源，做的是典型的呈现层工作：把 present work item 压入呈现队列，释放信号量唤醒呈现线程，记录共享围栏信号的起止，更新图像 release / present 计数，等待呈现侧事件同步。代表性调用与字符串：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">ReleaseSemaphore(...)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">TraceSharedFenceSignalBegin(...)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">TraceSharedFenceSignalEnd(...)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">UpdateImageReleasePresentCounter(...)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">WaitForSingleObjectEx(...)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">"Shared ID3D12Fence Signal"</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="ReleaseSemaphore(...)TraceSharedFenceSignalBegin(...)TraceSharedFenceSignalEnd(...)UpdateImageReleasePresentCounter(...)WaitForSingleObjectEx(...)&#x22;Shared ID3D12Fence Signal&#x22;"><div></div></button></div></figure></div>
+<p><code>Shared ID3D12Fence Signal</code> 表明 D3D12 侧参与了共享围栏同步。这条路径真实参与输出排队与同步，而非空壳对象。</p>
+<p><code>DxgiSwapchainQueuePresent</code> 只负责入队，最终提交在呈现线程 <code>DxgiPresentWorkerEntry</code>（<code>0x180DE0020</code>）→ <code>DxgiPresentWorkerMain</code>（<code>0x180DDFBE0</code>）里完成。主循环有三段关键证据：</p>
 <ul>
-<li>Vulkan 是上层渲染 API</li>
-<li>Windows 显示基础设施（WDDM/DXGI/DWM）是底层</li>
-<li>NVIDIA 驱动在把 Vulkan present 翻译成 Windows 显示栈操作时，会创建或引用 DXGI 对象</li>
-<li>Overlay 层（Steam、OBS）可能介入 Vulkan present，但当前静态证据中，只有 NVIDIA 驱动路径具备明确的 DXGI 创建能力</li>
+<li><code>WaitForSingleObjectEx</code> 等待前面释放的信号量，确认被唤醒的是处理 DXGI 呈现队列的 worker。</li>
+<li>从队列取出前面压入的 present work item，入队与出队形成闭环。</li>
+<li>一处虚表调用完成提交，前后紧跟 back buffer / present slot 处理、present flags 计算、提交结果映射回 <code>VkResult</code>、帧计数与 release / present 计数更新。</li>
 </ul>
-<p>静态分析可以锁定最可能的来源，精确确认需要运行态调用栈。</p>
+<p>最后这处虚表调用位于同步阶段之后，上下文已是 back buffer 与 present flag 处理，静态上能定位到接近最终 <code>Present</code> / flip 的提交点。</p>
+<svg viewBox="0 0 560 384" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;display:block;margin:1.2rem auto;border:1px solid rgba(142,160,189,.22);border-radius:14px;background:#0b1020;padding:16px;box-sizing:border-box">
+<defs>
+<marker id="vp-blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#74b9ff"></path></marker>
+<marker id="vp-amber" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#fbbf24"></path></marker>
+</defs>
+<rect x="130" y="16" width="300" height="54" rx="11" fill="#11182c" stroke="#74b9ff"></rect><text x="280" y="42" text-anchor="middle" fill="#d8e1f2" font-size="14">游戏渲染（Vulkan）</text><text x="280" y="60" text-anchor="middle" fill="#8ea0bd" font-size="11">vkQueuePresentKHR / 主场景绘制</text>
+<path d="M280 70 V86" stroke="#74b9ff" stroke-width="2" marker-end="url(#vp-blue)"></path>
+<rect x="130" y="86" width="300" height="54" rx="11" fill="#11182c" stroke="#74b9ff"></rect><text x="280" y="112" text-anchor="middle" fill="#d8e1f2" font-size="14">Vulkan 交换链图像</text><text x="280" y="130" text-anchor="middle" fill="#8ea0bd" font-size="11">图像对象创建 + 图像内存绑定</text>
+<path d="M280 140 V170" stroke="#fbbf24" stroke-width="2" marker-end="url(#vp-amber)"></path><text x="292" y="160" fill="#8ea0bd" font-size="11">驱动桥接</text>
+<rect x="130" y="170" width="300" height="54" rx="11" fill="#11182c" stroke="#fbbf24"></rect><text x="280" y="196" text-anchor="middle" fill="#d8e1f2" font-size="14">DXGI 呈现队列</text><text x="280" y="214" text-anchor="middle" fill="#8ea0bd" font-size="11">DxgiSwapchainQueuePresent</text>
+<path d="M280 224 V240" stroke="#fbbf24" stroke-width="2" marker-end="url(#vp-amber)"></path>
+<rect x="130" y="240" width="300" height="54" rx="11" fill="#11182c" stroke="#fbbf24"></rect><text x="280" y="266" text-anchor="middle" fill="#d8e1f2" font-size="14">呈现线程最终提交</text><text x="280" y="284" text-anchor="middle" fill="#8ea0bd" font-size="11">DxgiPresentWorkerMain（虚表提交点）</text>
+<path d="M280 294 V310" stroke="#fbbf24" stroke-width="2" marker-end="url(#vp-amber)"></path>
+<rect x="130" y="310" width="300" height="50" rx="11" fill="#11182c" stroke="#34415f"></rect><text x="280" y="340" text-anchor="middle" fill="#d8e1f2" font-size="14">窗口输出 / flip</text>
+</svg>
+<p>蓝色为 Vulkan 侧的渲染与资源，橙色为驱动内部的 DXGI/D3D12 呈现与提交。</p>
 <hr>
-<p><em>分析环境：Windows x64，NVIDIA GeForce RTX 系列 Laptop GPU，驱动版本 32.x 系列。静态证据来自 PE 结构、imports/exports、IAT 引用提取。</em></p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-wy3xnbws> <div class="nav-cell" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/03-nvidia-graphics-driver-stack/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 上一篇
+<h2 id="驱动内部的模块分工">驱动内部的模块分工<a class="anchor" href="#驱动内部的模块分工"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>这条路径跨了两个用户态模块。<code>nvoglv64.dll</code> 承载 Vulkan ICD、<code>VK_LAYER_NV_present</code> 呈现层与上面看到的 DXGI present 队列和呈现线程；<code>nvwgf2umx.dll</code> 是 NVIDIA 的 D3D 用户态驱动，具备 DXGI factory 创建能力。</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>模块</th><th>角色</th><th>DXGI/D3D 相关能力</th></tr></thead><tbody><tr><td><code>nvoglv64.dll</code></td><td>Vulkan ICD + <code>VK_LAYER_NV_present</code> + 内部呈现路径</td><td>交换链图像创建、DXGI present 队列与呈现线程</td></tr><tr><td><code>nvwgf2umx.dll</code></td><td>NVIDIA D3D 用户态驱动</td><td>静态导入 <code>CreateDXGIFactory2</code>，代码区存在 IAT 跳板</td></tr></tbody></table>
+<p><code>nvoglv64.dll</code> 还静态导入 <code>GDI32.dll!D3DKMTEnumAdapters2</code> 并在代码区存在 IAT 跳板。<code>D3DKMT</code> 是 WDDM 的用户态接口，Vulkan 驱动经它枚举适配器、与显示基础设施交互，这也是 present 进入 Windows 显示栈的边界。</p>
+<svg viewBox="0 0 620 336" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;display:block;margin:1.2rem auto;border:1px solid rgba(142,160,189,.22);border-radius:14px;background:#0b1020;padding:16px;box-sizing:border-box">
+<defs><marker id="ms-blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#74b9ff"></path></marker></defs>
+<rect x="40" y="18" width="360" height="52" rx="11" fill="#11182c" stroke="#74b9ff"></rect><text x="220" y="42" text-anchor="middle" fill="#d8e1f2" font-size="14">游戏</text><text x="220" y="60" text-anchor="middle" fill="#8ea0bd" font-size="11">Vulkan API 调用（vkQueuePresentKHR）</text>
+<path d="M220 70 V90" stroke="#74b9ff" stroke-width="2" marker-end="url(#ms-blue)"></path>
+<rect x="40" y="90" width="360" height="66" rx="11" fill="#11182c" stroke="#74b9ff"></rect><text x="220" y="114" text-anchor="middle" fill="#d8e1f2" font-size="14">nvoglv64.dll</text><text x="220" y="132" text-anchor="middle" fill="#8ea0bd" font-size="11">Vulkan ICD + VK_LAYER_NV_present</text><text x="220" y="148" text-anchor="middle" fill="#8ea0bd" font-size="11">内部 DXGI/D3D12 呈现路径</text>
+<rect x="430" y="90" width="180" height="66" rx="11" fill="#11182c" stroke="#fbbf24"></rect><text x="520" y="114" text-anchor="middle" fill="#d8e1f2" font-size="13">nvwgf2umx.dll</text><text x="520" y="132" text-anchor="middle" fill="#8ea0bd" font-size="10">NVIDIA D3D UMD</text><text x="520" y="148" text-anchor="middle" fill="#8ea0bd" font-size="10">CreateDXGIFactory2</text>
+<path d="M400 123 H430" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="4 3"></path>
+<line x1="30" y1="174" x2="410" y2="174" stroke="#5a6b8c" stroke-width="1" stroke-dasharray="5 4"></line><text x="40" y="170" fill="#8ea0bd" font-size="10">D3DKMT / WDDM 用户态边界</text>
+<path d="M220 156 V190" stroke="#74b9ff" stroke-width="2" marker-end="url(#ms-blue)"></path>
+<rect x="40" y="190" width="360" height="52" rx="11" fill="#11182c" stroke="#34415f"></rect><text x="220" y="214" text-anchor="middle" fill="#d8e1f2" font-size="14">WDDM / DXGI / DWM 显示栈</text><text x="220" y="232" text-anchor="middle" fill="#8ea0bd" font-size="11">系统显示基础设施</text>
+<path d="M220 242 V262" stroke="#74b9ff" stroke-width="2" marker-end="url(#ms-blue)"></path>
+<rect x="40" y="262" width="360" height="52" rx="11" fill="#11182c" stroke="#34415f"></rect><text x="220" y="286" text-anchor="middle" fill="#d8e1f2" font-size="14">nvlddmkm.sys</text><text x="220" y="304" text-anchor="middle" fill="#8ea0bd" font-size="11">WDDM Miniport（内核态）</text>
+</svg>
+<hr>
+<h2 id="与-vulkan-被转译成-d3d12-的区别">与 Vulkan 被转译成 D3D12 的区别<a class="anchor" href="#与-vulkan-被转译成-d3d12-的区别"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>最终 present 经过 DXGI/D3D12，不代表 Vulkan 被转译成 D3D12。差别在主渲染资源：当前证据里，交换链图像、图像内存、渲染目标都在 Vulkan 侧，DXGI/D3D12 只出现在最终窗口呈现链。驱动做的是把 Vulkan 的最终结果桥接到内部 DXGI/D3D12 呈现层，而非用 D3D12 重渲一遍场景。</p>
+<hr>
+<h2 id="工程含义present-hook-与-overlay">工程含义：Present Hook 与 Overlay<a class="anchor" href="#工程含义present-hook-与-overlay"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>这条路径解释了几个工程现象：</p>
+<ul>
+<li>Vulkan 游戏能稳定命中 <code>DXGI</code> / <code>D3D12</code> <code>Present</code>：最终窗口输出层在驱动内部就落在 DXGI/D3D12 呈现对象上。</li>
+<li>在这一层做 Overlay 有效：命中的是驱动真正参与最终输出的 present 层，不是旁路对象。</li>
+<li>录屏能拿到真实帧：这一层已靠近最终窗口输出，不再是应用内部的中间渲染阶段。</li>
+</ul>
+<p>因此在 NVIDIA 平台，Vulkan 游戏不一定要走纯 Vulkan Hook，直接挂 DXGI/D3D12 Present 常常可用。</p>
+<hr>
+<h2 id="运行态确认方法">运行态确认方法<a class="anchor" href="#运行态确认方法"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>静态分析锁定范围，精确来源需要运行态证据。在以下 API 上断点并记录调用栈：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">dxgi.dll!CreateDXGIFactory2</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">IDXGIFactory2::CreateSwapChainForHwnd</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">d3d12.dll!D3D12CreateDevice</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">vkQueuePresentKHR</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">vkCreateSwapchainKHR</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="dxgi.dll!CreateDXGIFactory2IDXGIFactory2::CreateSwapChainForHwndd3d12.dll!D3D12CreateDevicevkQueuePresentKHRvkCreateSwapchainKHR"><div></div></button></div></figure></div>
+<p>按调用栈落点判断来源：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>调用栈落点</th><th>来源</th></tr></thead><tbody><tr><td><code>nvoglv64.dll</code> / <code>nvwgf2umx.dll</code></td><td>NVIDIA 驱动 present 路径</td></tr><tr><td><code>SteamOverlayVulkanLayer64.dll</code></td><td>Steam Overlay</td></tr><tr><td><code>graphics-hook64.dll</code></td><td>OBS capture</td></tr><tr><td><code>UnityPlayer.dll</code> / <code>GameAssembly.dll</code></td><td>游戏或引擎显式桥接</td></tr></tbody></table>
+<p>Overlay 与 capture 模块（Steam、OBS）也可能介入 Vulkan present，但在当前静态样本中没有 D3D/DXGI 创建入口，落点会明确区分开。</p>
+<hr>
+<h2 id="证据边界">证据边界<a class="anchor" href="#证据边界"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>当前结论覆盖三个环节：渲染资源来自 Vulkan 交换链图像，图像内存由 Vulkan 侧管理，最终提交由 DXGI/D3D12 呈现线程完成。这条静态证据链足以支撑驱动行为解释与 Hook 实践。</p>
+<p>它仍是静态逆向得到的实现模型。要进一步坐实，需要运行期调用栈、ETW 跟踪或内核态观测，把静态定位的提交点对应到实际 flip。</p>
+<hr>
+<p><em>分析环境：Windows x64，NVIDIA GeForce RTX 系列 Laptop GPU，驱动 32.x 系列。静态证据来自 PE 结构、imports/exports、IAT 引用与字符串提取。</em></p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-wy3xnbws> <div class="nav-cell" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/03-nvidia-graphics-driver-stack/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 上一篇
 </span> <span class="nav-title" data-astro-cid-wy3xnbws>从 Vulkan ICD 到 WDDM Miniport：NVIDIA Windows 图形驱动行为链静态分析</span> </a> </div> <div class="nav-cell next" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/05-mcp-tool-design/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws>
 下一篇 <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8594;</span> </span> <span class="nav-title" data-astro-cid-wy3xnbws>Thin Facade MCP 工具设计：100 个 Operation 如何压缩成 6 个 Tool</span> </a> </div> </nav> </div> </div>  <footer class="micro" data-astro-cid-cymvyra4> <a class="back" href="/blog/minimalist/" data-astro-cid-cymvyra4> <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8592;</span> 返回技术索引 </a> <span class="copy" data-astro-cid-cymvyra4>&copy; 2026 Shrei</span> <span class="colophon" data-astro-cid-cymvyra4>Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div> </body></html> 
