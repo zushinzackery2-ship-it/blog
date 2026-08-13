@@ -1,0 +1,129 @@
+<!DOCTYPE html><html lang="zh-CN" data-astro-cid-cymvyra4> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f2ec"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#151412"><title>像素画重绘的区域优先架构：碎斑的成因与区域连续性 · Shrei</title><meta name="description" content="照片与插画缩成低分辨率像素画时，逐像素采样必然产生碎斑。拆解 PixelForge 的处理链：超像素合并、结构锚点先于合并介入、覆盖投票栅格化、区域双色模型与线性光混色，把&quot;形成连续色块&quot;放到栅格化之前。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/25-pixel-art-region-first-architecture/"><meta property="og:title" content="像素画重绘的区域优先架构：碎斑的成因与区域连续性 · Shrei"><meta property="og:description" content="照片与插画缩成低分辨率像素画时，逐像素采样必然产生碎斑。拆解 PixelForge 的处理链：超像素合并、结构锚点先于合并介入、覆盖投票栅格化、区域双色模型与线性光混色，把&quot;形成连续色块&quot;放到栅格化之前。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/25-pixel-art-region-first-architecture/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><!-- 同步主站主题选择：light/dark 显式跟随，auto 或无记录回落系统偏好。
+             data-theme 取 expressive-code 主题名，同时驱动 light-dark() 色板与代码块配色 --><script>
+            (function () {
+                let stored = null;
+                try {
+                    stored = localStorage.getItem('shrei-theme');
+                } catch (_) {
+                    /* 隐私模式下不可用，回落系统偏好 */
+                }
+                const media = window.matchMedia('(prefers-color-scheme: dark)');
+                const apply = () => {
+                    const dark = stored === 'dark' || (stored !== 'light' && media.matches);
+                    document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
+                };
+                apply();
+                if (stored !== 'light' && stored !== 'dark') {
+                    media.addEventListener('change', apply);
+                }
+            })();
+        </script><style>:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}.topbar[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-cymvyra4]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-cymvyra4]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-cymvyra4]:hover{color:var(--red)}.center[data-astro-cid-cymvyra4]{min-width:0;text-align:center}.to-home[data-astro-cid-cymvyra4]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-cymvyra4]:hover{color:var(--red)}.to-home[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(.25em)}footer[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]{transition:color .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover{color:var(--red)}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(-.25em)}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-cymvyra4]{grid-template-columns:1fr auto}.center[data-astro-cid-cymvyra4]{display:none}footer[data-astro-cid-cymvyra4]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:start}}@media print{.topbar[data-astro-cid-cymvyra4] .to-home[data-astro-cid-cymvyra4],footer[data-astro-cid-cymvyra4]{display:none}}
+</style><link rel="stylesheet" href="/blog/astro/_slug_.Cj97UYPf.css"><script type="module" src="/blog/astro/page.DUzMluoR.js"></script></head> <body data-astro-cid-cymvyra4> <div class="frame" data-astro-cid-cymvyra4> <div class="topbar micro" data-astro-cid-cymvyra4> <a class="brand" href="/blog/minimalist/" data-astro-cid-cymvyra4>Shrei — Technical Index</a> <div class="center" data-astro-cid-cymvyra4><span class="topbar-category" data-astro-cid-wy3xnbws>图形渲染</span></div> <a class="to-home" href="/blog/" data-astro-cid-cymvyra4>
+博客主站 <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-wy3xnbws> <p class="category micro" data-astro-cid-wy3xnbws>图形渲染</p> <h1 data-astro-cid-wy3xnbws> 像素画重绘的区域优先架构：碎斑的成因与区域连续性  </h1> <div class="meta micro" data-astro-cid-wy3xnbws> <time datetime="2026-08-13" data-astro-cid-wy3xnbws>2026-08-13</time> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>15 min</span> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>5,439 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span class="tags" data-astro-cid-wy3xnbws>Pixel Art / Image Processing / Superpixel / LAB</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#碎斑的成因" data-astro-cid-wy3xnbws>碎斑的成因</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#处理链" data-astro-cid-wy3xnbws>处理链</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#工作分辨率与尺寸分档" data-astro-cid-wy3xnbws>工作分辨率与尺寸分档</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#超像素与区域合并" data-astro-cid-wy3xnbws>超像素与区域合并</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#结构锚点必须先于合并介入" data-astro-cid-wy3xnbws>结构锚点必须先于合并介入</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#覆盖投票栅格化" data-astro-cid-wy3xnbws>覆盖投票栅格化</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#区域双色模型与线性光混色" data-astro-cid-wy3xnbws>区域双色模型与线性光混色</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#像素预算与焦点构图" data-astro-cid-wy3xnbws>像素预算与焦点构图</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#验收口径" data-astro-cid-wy3xnbws>验收口径</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#结论" data-astro-cid-wy3xnbws>结论</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+</a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <blockquote><p>把照片或插画缩成 24×24 的像素画，核心失败模式是碎斑：相邻输出格各自命中不同颜色，画面变成噪点拼盘。根源不在采样核的好坏，而在决策顺序——每个输出格独立决策，格与格之间没有任何约束。修复方式是把处理顺序反过来：先在工作分辨率上形成连续色块，再把色块投票写入输出网格；需要在低分辨率存活的小特征（眼睛、高光、徽章）必须在区域合并之前介入决策，合并之后再补救只能改颜色，救不回结构。这套架构落地在 <a href="https://github.com/zushinzackery2-ship-it/PixelForge">PixelForge</a> 里，一个本机 Python 服务，WebUI 与 Unity 编辑器共用同一条处理链。</p></blockquote>
+<hr>
+<h2 id="碎斑的成因">碎斑的成因<a class="anchor" href="#碎斑的成因"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>像素画和普通缩略图的判定标准不同。缩略图只要求”远看像”，像素画要求连续色块、清晰轮廓和有限颜色——每个像素都是一次显式的落色决策。</p>
+<p>直接对原图做逐格采样或逐格平均，在平坦区域没问题，一到头发、织物、渐变背景这类高频区域就露馅：相邻两个输出格各自独立地取样、独立地聚类、独立地映射调色板，没有任何机制保证它们落到同一个颜色。原图里一块视觉上连续的深棕色头发，输出里变成深棕、暖灰、暗红交错的碎斑。</p>
+<p>问题不是采样核不够好。换 LANCZOS、加双边滤波、先模糊再缩小，都只能压制碎斑的幅度，不能消除成因：<strong>逐格独立决策本身就无法产生”连续色块”这个输出性质</strong>。色块是格与格之间的约束关系，必须由一个看得到整片区域的阶段来生成。</p>
+<hr>
+<h2 id="处理链">处理链<a class="anchor" href="#处理链"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>PixelForge 把处理链拆成六个阶段，前四个阶段都在回答同一个问题——“这张图由哪些连续区域构成”，直到第五阶段才出现输出网格：</p>
+<svg viewBox="0 0 560 470" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;display:block;margin:1.2rem auto;border:1px solid rgba(142,160,189,.22);border-radius:14px;background:#0b1020;padding:16px;box-sizing:border-box">
+<defs>
+<marker id="pf-blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#74b9ff"></path></marker>
+<marker id="pf-amber" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#fbbf24"></path></marker>
+</defs>
+<rect x="120" y="14" width="320" height="50" rx="11" fill="#11182c" stroke="#74b9ff"></rect><text x="280" y="36" text-anchor="middle" fill="#d8e1f2" font-size="14">SourceAnalysis</text><text x="280" y="54" text-anchor="middle" fill="#8ea0bd" font-size="11">解码 + 主体概率（alpha / 语义模型 / 边框）</text>
+<path d="M280 64 V78" stroke="#74b9ff" stroke-width="2" marker-end="url(#pf-blue)"></path>
+<rect x="120" y="78" width="320" height="50" rx="11" fill="#11182c" stroke="#74b9ff"></rect><text x="280" y="100" text-anchor="middle" fill="#d8e1f2" font-size="14">WorkImage</text><text x="280" y="118" text-anchor="middle" fill="#8ea0bd" font-size="11">按输出尺寸分档缩放，sRGB → LAB</text>
+<path d="M280 128 V142" stroke="#74b9ff" stroke-width="2" marker-end="url(#pf-blue)"></path>
+<rect x="120" y="142" width="320" height="50" rx="11" fill="#11182c" stroke="#74b9ff"></rect><text x="280" y="164" text-anchor="middle" fill="#d8e1f2" font-size="14">SuperpixelGraph</text><text x="280" y="182" text-anchor="middle" fill="#8ea0bd" font-size="11">SLIC 超像素 + 邻接图 + 特征重要度</text>
+<path d="M280 192 V206" stroke="#74b9ff" stroke-width="2" marker-end="url(#pf-blue)"></path>
+<rect x="120" y="206" width="320" height="50" rx="11" fill="#11182c" stroke="#74b9ff"></rect><text x="280" y="228" text-anchor="middle" fill="#d8e1f2" font-size="14">RegionPlan</text><text x="280" y="246" text-anchor="middle" fill="#8ea0bd" font-size="11">区域合并 + 每区域双色端点摘要</text>
+<path d="M280 256 V270" stroke="#fbbf24" stroke-width="2" marker-end="url(#pf-amber)"></path><text x="300" y="268" fill="#8ea0bd" font-size="11">进入输出网格</text>
+<rect x="120" y="270" width="320" height="50" rx="11" fill="#11182c" stroke="#fbbf24"></rect><text x="280" y="292" text-anchor="middle" fill="#d8e1f2" font-size="14">PixelPlan</text><text x="280" y="310" text-anchor="middle" fill="#8ea0bd" font-size="11">区域覆盖投票栅格化 + 锚点覆盖层 + 结构笔触</text>
+<path d="M280 320 V334" stroke="#fbbf24" stroke-width="2" marker-end="url(#pf-amber)"></path>
+<rect x="120" y="334" width="320" height="50" rx="11" fill="#11182c" stroke="#fbbf24"></rect><text x="280" y="356" text-anchor="middle" fill="#d8e1f2" font-size="14">Palette Render</text><text x="280" y="374" text-anchor="middle" fill="#8ea0bd" font-size="11">调色板预算 + 色点/抖动 + PNG(A)</text>
+<path d="M280 384 V398" stroke="#fbbf24" stroke-width="2" marker-end="url(#pf-amber)"></path>
+<rect x="120" y="398" width="320" height="44" rx="11" fill="#11182c" stroke="#34415f"></rect><text x="280" y="424" text-anchor="middle" fill="#d8e1f2" font-size="13">1x 像素画输出</text>
+</svg>
+<p>六个阶段同时是缓存边界：每个参数只失效它实际影响的最早阶段及下游。只换调色板或色点模式时，前五个阶段全部命中缓存，重算在 100ms 以内完成；改一张图才需要从头跑。</p>
+<hr>
+<h2 id="工作分辨率与尺寸分档">工作分辨率与尺寸分档<a class="anchor" href="#工作分辨率与尺寸分档"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>区域分析不在原图上跑，也不在输出分辨率上跑，而是在一个中间的工作分辨率上。原图太大，超像素和合并的开销没有意义；输出网格太小，24×24 上根本不存在可供分析的”区域”。</p>
+<p>工作长边按输出宽度分档：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th align="left">输出宽度</th><th align="left">工作长边</th></tr></thead><tbody><tr><td align="left">8–23px</td><td align="left"><code>clamp(输出 × 8, 96, 192)</code></td></tr><tr><td align="left">24–39px</td><td align="left"><code>clamp(输出 × 5.5, 128, 224)</code></td></tr><tr><td align="left">40–63px</td><td align="left"><code>clamp(输出 × 6, 160, 384)</code></td></tr><tr><td align="left">64–256px</td><td align="left"><code>clamp(输出 × 4, 256, 768)</code></td></tr></tbody></table>
+<p>24px 输出对应 132×132 的工作图。缩放使用预乘 alpha 的 LANCZOS，然后转 LAB——后续所有颜色距离、对比度和冷暖判断都在 LAB 空间做，sRGB 的数值距离和感知距离偏差太大。</p>
+<hr>
+<h2 id="超像素与区域合并">超像素与区域合并<a class="anchor" href="#超像素与区域合并"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>工作图先用 SLIC 切成超像素：以颜色距离加空间正则聚类，保证每个超像素本身是连续的。超像素数量由区域预算反推，24px 焦点构图下最终得到约 249 个输出区域。</p>
+<p>超像素之间的合并由代价函数驱动，代价不只看颜色差，还乘上面积、主体显著性和特征重要度。这样合并天然偏向”吃掉背景里的大片相近色”，而对主体上的小区域保持克制。实现上用一次性构造的紧凑边数组加并查集做合并，替代 Python 动态 set 和堆的图结构——这一层是整条链的性能主体。</p>
+<hr>
+<h2 id="结构锚点必须先于合并介入">结构锚点必须先于合并介入<a class="anchor" href="#结构锚点必须先于合并介入"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>眼睛、嘴、高光、徽章这类小特征，在低分辨率下的死法非常固定：合并阶段被相邻大区域吞掉。事后再”把眼睛的颜色补回去”是无效的，因为吞并发生后，眼睛作为独立几何已经不存在，补色只是在错误的形状上涂正确的颜色。</p>
+<svg viewBox="0 0 620 240" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;display:block;margin:1.2rem auto;border:1px solid rgba(142,160,189,.22);border-radius:14px;background:#0b1020;padding:16px;box-sizing:border-box">
+<defs><marker id="an-amber" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#fbbf24"></path></marker>
+<marker id="an-blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#74b9ff"></path></marker></defs>
+<text x="20" y="30" fill="#fbbf24" font-size="12">合并后补色：结构已丢失</text>
+<rect x="20" y="42" width="150" height="44" rx="9" fill="#11182c" stroke="#fbbf24"></rect><text x="95" y="68" text-anchor="middle" fill="#d8e1f2" font-size="12">区域合并</text>
+<path d="M170 64 H200" stroke="#fbbf24" stroke-width="2" marker-end="url(#an-amber)"></path>
+<rect x="200" y="42" width="170" height="44" rx="9" fill="#11182c" stroke="#fbbf24"></rect><text x="285" y="61" text-anchor="middle" fill="#d8e1f2" font-size="12">小特征被大区域吞并</text><text x="285" y="78" text-anchor="middle" fill="#8ea0bd" font-size="10">独立几何消失</text>
+<path d="M370 64 H400" stroke="#fbbf24" stroke-width="2" marker-end="url(#an-amber)"></path>
+<rect x="400" y="42" width="190" height="44" rx="9" fill="#11182c" stroke="#fbbf24"></rect><text x="495" y="61" text-anchor="middle" fill="#d8e1f2" font-size="12">事后补关键点颜色</text><text x="495" y="78" text-anchor="middle" fill="#8ea0bd" font-size="10">只能改色，形状救不回</text>
+<text x="20" y="136" fill="#74b9ff" font-size="12">合并前介入：结构获得预算</text>
+<rect x="20" y="148" width="150" height="44" rx="9" fill="#11182c" stroke="#74b9ff"></rect><text x="95" y="167" text-anchor="middle" fill="#d8e1f2" font-size="12">锚点检测</text><text x="95" y="184" text-anchor="middle" fill="#8ea0bd" font-size="10">局部少数派颜色判据</text>
+<path d="M170 170 H200" stroke="#74b9ff" stroke-width="2" marker-end="url(#an-blue)"></path>
+<rect x="200" y="148" width="170" height="44" rx="9" fill="#11182c" stroke="#74b9ff"></rect><text x="285" y="167" text-anchor="middle" fill="#d8e1f2" font-size="12">重要度参与合并代价</text><text x="285" y="184" text-anchor="middle" fill="#8ea0bd" font-size="10">锚点区域延后吞并</text>
+<path d="M370 170 H400" stroke="#74b9ff" stroke-width="2" marker-end="url(#an-blue)"></path>
+<rect x="400" y="148" width="190" height="44" rx="9" fill="#11182c" stroke="#74b9ff"></rect><text x="495" y="167" text-anchor="middle" fill="#d8e1f2" font-size="12">覆盖层强制写入</text><text x="495" y="184" text-anchor="middle" fill="#8ea0bd" font-size="10">输出格标记 protected</text>
+</svg>
+<p>所以锚点检测放在合并之前：先找出”需要在低分辨率存活的位置”，把它们的重要度写进合并代价，让锚点所在的小区域活到栅格化。候选按主体权重和空间多样性排序——主体上的锚点优先，同一个部位不重复占配额。</p>
+<p>锚点判据本身踩过一个坑：最初用 Hessian 主曲率找”小而突出”的点，结果平顶的小色斑（虹膜、徽章中心这类内部平坦的特征）响应太弱被漏掉。换成支持域内的<strong>局部少数派颜色</strong>判据后稳定——一个颜色在局部邻域里占比小但成团存在，就是需要保护的特征，与它是不是”尖”无关。</p>
+<hr>
+<h2 id="覆盖投票栅格化">覆盖投票栅格化<a class="anchor" href="#覆盖投票栅格化"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>栅格化阶段把工作分辨率的区域标签写入输出网格：每个输出格覆盖工作图的一小片像素，按区域覆盖面积投票，获胜区域拿走这个格子。格子的颜色来自区域摘要，而不是这片像素的重新平均——这一步就是”区域优先”的兑现：输出格从区域继承颜色，格与格之间的连续性由区域的连续性保证。</p>
+<p>在大色块底层之上，再叠一个稀疏覆盖层：结构锚点强制写入自己的颜色并标记 <code>protected</code>，后续调色板映射和孤立像素清理都不允许动这些格子。前景、背景、alpha、protected 四个语义都是显式布尔掩码，不依赖浮点概率的隐式转换。</p>
+<hr>
+<h2 id="区域双色模型与线性光混色">区域双色模型与线性光混色<a class="anchor" href="#区域双色模型与线性光混色"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>区域摘要如果只保留一个代表色，冷暖结构在这一步就丢了。头发在受光面偏暖、背光面偏冷，压成一个均色后，后面的调色板和抖动无论怎么做都恢复不出这个关系——信息已经不在管线里了。</p>
+<p>所以每个区域保留<strong>两组真实颜色端点</strong>加混合比例和对比度：端点用降低明度权重的主轴初始化加色度加权 2-means 从区域内真实像素聚出来，不是人工设定的冷暖对。栅格化时每个输出格重新估计自己覆盖范围内的局部比例，需要渐变的格子在<strong>物理线性光</strong>中混合两个端点。直接平均 sRGB 或 LAB 会产生发灰的脏色——sRGB 是经过 gamma 编码的信号值，算术平均不对应任何光学过程；线性光混合对应真实的光量叠加，中间色干净。</p>
+<p>这条”双色端点从区域规划一路传到调色板”的链路，是下一篇调色板与色点渲染的输入，这里不展开。</p>
+<hr>
+<h2 id="像素预算与焦点构图">像素预算与焦点构图<a class="anchor" href="#像素预算与焦点构图"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>24×24 一共 576 个格子。完整立绘塞进去，双眼加表情能分到的格子是个位数，无论管线多精细都不够画。这不是算法问题，是构图问题：低分辨率下要先决定”把预算花在哪”。</p>
+<p>处理方式是显式构图选项：默认保持原图边界和宽高比，不替用户裁切；用户显式选择 <code>focal</code> 时，用语义模型（u2netp ONNX）的主体概率约束候选范围，在 80×80 的 LAB 图上配对高色度同色相特征对来定位脸部窗口，取约 65% 短边的方形特写。检测到唯一可信正脸时用脸中心接管窗口位置；找不到焦点就退回主体质心。</p>
+<p>一个实际教训：焦点检测曾把真实人像照片里的橙色宇航服徽标误判成眼睛，脸被裁出画面。修复靠的不是调权重，而是引入显式的人脸 landmark 通道，并保证未命中人脸时行为与原路径完全一致——验收样本的输出哈希在修复前后不变。</p>
+<hr>
+<h2 id="验收口径">验收口径<a class="anchor" href="#验收口径"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>这套管线的每个机制都有自动测试，但自动指标只能证明<strong>机制生效</strong>，不能证明<strong>成图好看</strong>。区域数、锚点保留率、冷暖格子数全部达标的图，五官仍然可能不可读。最终判定只有一种方式：原图、裁切源图、1x 成图、放大网格并排目检。</p>
+<p>目检本身也有尺度纪律。像素画质量不能用 16x 放大图判定——放大会把正常观看尺寸下人眼积分掉的单像素色点放大成”碎斑”，按放大态观感修图会把有活力的色彩振动全部磨平。24px 是验收尺度；诊断成因时导出 48px，它的信息量足以暴露发肤糊块和区域边界走向，比 24px 好定位得多。与观看距离无关的缺陷才是真缺陷：明度分层断裂、剪影不成立、结构不连续属于这类；孤立饱和色点的放大态观感不属于。</p>
+<hr>
+<h2 id="结论">结论<a class="anchor" href="#结论"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>像素画重绘的质量上限由处理顺序决定：连续色块必须在栅格化之前形成，小特征必须在区域合并之前拿到预算，冷暖信息必须在调色板构建之前保留。三件事都是”把决策提前到信息还在的时候”，末端补救在这条管线里没有位置。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-wy3xnbws> <div class="nav-cell" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/26-pixel-art-palette-budget-atelier/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 上一篇
+</span> <span class="nav-title" data-astro-cid-wy3xnbws>有限调色板的色域预算与区域相位色点</span> </a> </div> <div class="nav-cell next" data-astro-cid-wy3xnbws>  </div> </nav> </div> </div>  <footer class="micro" data-astro-cid-cymvyra4> <a class="back" href="/blog/minimalist/" data-astro-cid-cymvyra4> <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8592;</span> 返回技术索引 </a> <span class="copy" data-astro-cid-cymvyra4>&copy; 2026 Shrei</span> <span class="colophon" data-astro-cid-cymvyra4>Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div> </body></html> 
