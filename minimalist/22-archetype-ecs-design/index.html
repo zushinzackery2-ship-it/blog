@@ -18,30 +18,30 @@
                 }
             })();
         </script><style>:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}.topbar[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-cymvyra4]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-cymvyra4]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-cymvyra4]:hover{color:var(--red)}.center[data-astro-cid-cymvyra4]{min-width:0;text-align:center}.to-home[data-astro-cid-cymvyra4]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-cymvyra4]:hover{color:var(--red)}.to-home[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(.25em)}footer[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]{transition:color .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover{color:var(--red)}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(-.25em)}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-cymvyra4]{grid-template-columns:1fr auto}.center[data-astro-cid-cymvyra4]{display:none}footer[data-astro-cid-cymvyra4]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:start}}@media print{.topbar[data-astro-cid-cymvyra4] .to-home[data-astro-cid-cymvyra4],footer[data-astro-cid-cymvyra4]{display:none}}
-</style><link rel="stylesheet" href="/blog/astro/_slug_.Cj97UYPf.css"><script type="module" src="/blog/astro/page.DUzMluoR.js"></script></head> <body data-astro-cid-cymvyra4> <div class="frame" data-astro-cid-cymvyra4> <div class="topbar micro" data-astro-cid-cymvyra4> <a class="brand" href="/blog/minimalist/" data-astro-cid-cymvyra4>Shrei — Technical Index</a> <div class="center" data-astro-cid-cymvyra4><span class="topbar-category" data-astro-cid-wy3xnbws>游戏系统设计</span></div> <a class="to-home" href="/blog/" data-astro-cid-cymvyra4>
-博客主站 <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-wy3xnbws> <p class="category micro" data-astro-cid-wy3xnbws>游戏系统设计</p> <h1 data-astro-cid-wy3xnbws> 一种有意思的 Archetype ECS 的设计与取舍  </h1> <div class="meta micro" data-astro-cid-wy3xnbws> <time datetime="2026-08-12" data-astro-cid-wy3xnbws>2026-08-12</time> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>18 min</span> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>6,755 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span class="tags" data-astro-cid-wy3xnbws>Unity / ECS / Archetype / DOTS / Architecture</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#双层混合结构" data-astro-cid-wy3xnbws>双层混合结构</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#实体句柄与版本号" data-astro-cid-wy3xnbws>实体句柄与版本号</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#archetype-的内存布局" data-astro-cid-wy3xnbws>Archetype 的内存布局</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#定长-128-位组件掩码" data-astro-cid-wy3xnbws>定长 128 位组件掩码</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#无-system-层查询即并行调度" data-astro-cid-wy3xnbws>无 System 层：查询即并行调度</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#逻辑与渲染分成两个-world" data-astro-cid-wy3xnbws>逻辑与渲染分成两个 World</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#组件在编译期注册" data-astro-cid-wy3xnbws>组件在编译期注册</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#与官方-dots-的取舍对照" data-astro-cid-wy3xnbws>与官方 DOTS 的取舍对照</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#架构取舍的可借鉴之处" data-astro-cid-wy3xnbws>架构取舍的可借鉴之处</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+</style><link rel="stylesheet" href="/blog/astro/_slug_.Cj97UYPf.css"><script type="module" src="/blog/astro/page.BDovYrek.js"></script></head> <body data-astro-cid-cymvyra4> <div class="frame" data-astro-cid-cymvyra4> <div class="topbar micro" data-astro-cid-cymvyra4> <a class="brand" href="/blog/minimalist/" data-astro-cid-cymvyra4>Shrei — Technical Index</a> <div class="center" data-astro-cid-cymvyra4><span class="topbar-category" data-astro-cid-wy3xnbws>游戏系统设计</span></div> <a class="to-home" href="/blog/" data-astro-cid-cymvyra4>
+博客主站 <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-wy3xnbws> <p class="category micro" data-astro-cid-wy3xnbws>游戏系统设计</p> <h1 data-astro-cid-wy3xnbws> 一种有意思的 Archetype ECS 的设计与取舍  </h1> <div class="meta micro" data-astro-cid-wy3xnbws> <time datetime="2026-08-12" data-astro-cid-wy3xnbws>2026-08-12</time> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>18 min</span> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>7,557 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span class="tags" data-astro-cid-wy3xnbws>Unity / ECS / Archetype / DOTS / Architecture</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#双层混合结构" data-astro-cid-wy3xnbws>双层混合结构</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#实体句柄与版本号" data-astro-cid-wy3xnbws>实体句柄与版本号</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#archetype-的内存布局" data-astro-cid-wy3xnbws>Archetype 的内存布局</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#定长-128-位组件掩码" data-astro-cid-wy3xnbws>定长 128 位组件掩码</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#无-system-层查询即并行调度" data-astro-cid-wy3xnbws>无 System 层：查询即并行调度</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#逻辑与渲染分成两个-world" data-astro-cid-wy3xnbws>逻辑与渲染分成两个 World</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#组件在编译期注册" data-astro-cid-wy3xnbws>组件在编译期注册</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#与官方-dots-的取舍对照" data-astro-cid-wy3xnbws>与官方 DOTS 的取舍对照</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#架构取舍的可借鉴之处" data-astro-cid-wy3xnbws>架构取舍的可借鉴之处</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
 </a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <p>在大型 Unity 项目里，当需要承载大量、种类繁多、可高度并行处理的实体——大世界里的建造物、地形装饰、批量渲染对象——官方的 DOTS/Entities 是常见选择，但不是唯一路线。这里解析另一种可行方案：一套自成体系的 Archetype ECS。它沿用 Entities 的概念体系（Entity、Archetype、组件掩码、Chunk、Job），但在句柄打包、组件掩码、内存布局、System 组织上做了不同取舍，并和上层面向对象的玩法框架组成双层结构。</p>
 <p>结论先放这里：这套设计的核心偏好是”能在编译期或数据结构上固定下来的就固定下来”——用组件类型上限、值类型管理器、编译期注册，换取运行时的确定性和低开销；再用逻辑与渲染的双 World，把两类访问模式彻底分开。下文用通用命名描述这套设计，聚焦结构、关系和取舍本身。</p>
 <hr>
 <h2 id="双层混合结构">双层混合结构<a class="anchor" href="#双层混合结构"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
 <p>整套系统分三部分：上层的面向对象玩法框架、下层的数据导向 ECS、以及把两者连接起来的桥接层。</p>
-<svg viewBox="0 0 720 340" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;font-family:sans-serif">
-  <rect x="40" y="20" width="640" height="80" rx="6" fill="#eef3fb" stroke="#4a6fa5"></rect>
-  <text x="360" y="46" text-anchor="middle" font-size="15" font-weight="bold" fill="#2c4a75">OOP 玩法框架</text>
-  <text x="360" y="70" text-anchor="middle" font-size="12" fill="#40556f">Entity(class) · 组件 + 多阶段 Tick · 生命周期 · 事件系统</text>
-  <text x="360" y="88" text-anchor="middle" font-size="12" fill="#40556f">角色 · NPC · 技能 · 交互物 · 战斗</text>
-  <rect x="40" y="150" width="640" height="80" rx="6" fill="#eafaf1" stroke="#3f9d6d"></rect>
-  <text x="360" y="176" text-anchor="middle" font-size="15" font-weight="bold" fill="#2f7150">数据导向 Archetype ECS</text>
-  <text x="360" y="200" text-anchor="middle" font-size="12" fill="#3a6650">Entity(struct) · EntityType · ComponentMask · EntityManager(struct)</text>
-  <text x="360" y="218" text-anchor="middle" font-size="12" fill="#3a6650">原生内存 · SoA 列存 · Jobs+Burst 并行 · 双 World</text>
-  <rect x="40" y="280" width="640" height="46" rx="6" fill="#f5f5f5" stroke="#999"></rect>
-  <text x="360" y="308" text-anchor="middle" font-size="13" fill="#555">Unity Jobs · Burst · Collections · Mathematics</text>
-  <line x1="360" y1="100" x2="360" y2="150" stroke="#4a6fa5" stroke-width="1.5" marker-end="url(#a1)"></line>
-  <line x1="360" y1="230" x2="360" y2="280" stroke="#3f9d6d" stroke-width="1.5" marker-end="url(#a1)"></line>
-  <text x="374" y="128" font-size="11" fill="#666">Binder 组件 · 实体池</text>
+<svg role="img" viewBox="0 0 720 340" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto">
+  <rect x="40" y="20" width="640" height="80" fill="none" stroke="currentColor"></rect>
+  <text x="360" y="46" text-anchor="middle" font-size="15" font-weight="bold" fill="currentColor">OOP 玩法框架</text>
+  <text x="360" y="70" text-anchor="middle" font-size="12" fill="currentColor">Entity(class) · 组件 + 多阶段 Tick · 生命周期 · 事件系统</text>
+  <text x="360" y="88" text-anchor="middle" font-size="12" fill="currentColor">角色 · NPC · 技能 · 交互物 · 战斗</text>
+  <rect x="40" y="150" width="640" height="80" fill="none" stroke="currentColor"></rect>
+  <text x="360" y="176" text-anchor="middle" font-size="15" font-weight="bold" fill="currentColor">数据导向 Archetype ECS</text>
+  <text x="360" y="200" text-anchor="middle" font-size="12" fill="currentColor">Entity(struct) · EntityType · ComponentMask · EntityManager(struct)</text>
+  <text x="360" y="218" text-anchor="middle" font-size="12" fill="currentColor">原生内存 · SoA 列存 · Jobs+Burst 并行 · 双 World</text>
+  <rect x="40" y="280" width="640" height="46" fill="none" stroke="currentColor"></rect>
+  <text x="360" y="308" text-anchor="middle" font-size="13" fill="currentColor" opacity="0.82">Unity Jobs · Burst · Collections · Mathematics</text>
+  <line x1="360" y1="100" x2="360" y2="150" stroke="currentColor" stroke-width="1.5" marker-end="url(#a1)"></line>
+  <line x1="360" y1="230" x2="360" y2="280" stroke="currentColor" stroke-width="1.5" marker-end="url(#a1)"></line>
+  <text x="374" y="128" font-size="11" fill="currentColor" opacity="0.82">Binder 组件 · 实体池</text>
   <defs>
     <marker id="a1" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-      <path d="M0,0 L6,3 L0,6 Z" fill="#666"></path>
+      <path d="M0,0 L6,3 L0,6 Z" fill="currentColor" opacity="0.82"></path>
     </marker>
   </defs>
 </svg>
@@ -58,30 +58,30 @@
 <p>每种组件的列位置由一张描述符数组记录，它内联在块结构末尾，不是外部指针：</p>
 <div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="c"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#F97583;--1:#BF3441">struct</span><span style="--0:#E1E4E8;--1:#24292E"> ComponentType {</span><span style="--0:#99A0A6;--1:#616972">       // 0x08 字节，三字段与一个 u64 联合</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">int16_t</span><span style="--0:#E1E4E8;--1:#24292E"> componentID;</span><span style="--0:#99A0A6;--1:#616972">     // 0x00 - 组件类型 id，即位掩码中的位序</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">int16_t</span><span style="--0:#E1E4E8;--1:#24292E"> componentSize;</span><span style="--0:#99A0A6;--1:#616972">   // 0x02 - 组件数据大小（字节）</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">int32_t</span><span style="--0:#E1E4E8;--1:#24292E"> offset;</span><span style="--0:#99A0A6;--1:#616972">          // 0x04 - 该组件列在块内的起始偏移</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">};</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="struct ComponentType {       // 0x08 字节，三字段与一个 u64 联合    int16_t componentID;     // 0x00 - 组件类型 id，即位掩码中的位序    int16_t componentSize;   // 0x02 - 组件数据大小（字节）    int32_t offset;          // 0x04 - 该组件列在块内的起始偏移};"><div></div></button></div></figure></div>
 <p><code>memory</code> 指向的原生内存采用 SoA（Structure of Arrays）列存：同一 archetype 里所有实体的同一组件连续排列，而不是把一个实体的所有组件挨在一起放。这样遍历某个组件时访问是连续的，对 cache 和 SIMD 都友好。</p>
-<svg viewBox="0 0 720 360" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;font-family:sans-serif">
-  <rect x="20" y="20" width="150" height="46" rx="5" fill="#eef3fb" stroke="#4a6fa5"></rect>
-  <text x="95" y="40" text-anchor="middle" font-size="13" font-weight="bold" fill="#2c4a75">EntityManager</text>
-  <text x="95" y="57" text-anchor="middle" font-size="11" fill="#40556f">两个基址指针</text>
-  <rect x="230" y="14" width="220" height="70" rx="5" fill="#fbfbfb" stroke="#999"></rect>
-  <text x="340" y="34" text-anchor="middle" font-size="12" font-weight="bold" fill="#555">EntityInstanceData[]</text>
-  <text x="340" y="52" text-anchor="middle" font-size="11" fill="#666">按 globalIndex 索引，每槽 0x10</text>
-  <text x="340" y="70" text-anchor="middle" font-size="11" fill="#666">{entityType, entityIdx, version}</text>
-  <rect x="230" y="110" width="470" height="230" rx="5" fill="#eafaf1" stroke="#3f9d6d"></rect>
-  <text x="465" y="132" text-anchor="middle" font-size="12" font-weight="bold" fill="#2f7150">EntityTypeInstanceData[]  ·  每块 0x240</text>
-  <rect x="250" y="150" width="430" height="80" rx="4" fill="#fff" stroke="#3f9d6d"></rect>
-  <text x="465" y="168" text-anchor="middle" font-size="11" fill="#2f7150">archetype A：组件集 {Position(0x0C), Rotation(0x10)}</text>
-  <rect x="262" y="180" width="180" height="34" fill="#dceede" stroke="#7bbd94"></rect>
-  <text x="352" y="201" text-anchor="middle" font-size="11" fill="#2f7150">Position[0..count]  连续</text>
-  <rect x="452" y="180" width="216" height="34" fill="#cfe6d6" stroke="#7bbd94"></rect>
-  <text x="560" y="201" text-anchor="middle" font-size="11" fill="#2f7150">Rotation[0..count]  连续</text>
-  <rect x="250" y="250" width="430" height="70" rx="4" fill="#fff" stroke="#3f9d6d"></rect>
-  <text x="465" y="268" text-anchor="middle" font-size="11" fill="#2f7150">archetype B：组件集 {Position, Renderer}</text>
-  <text x="465" y="296" text-anchor="middle" font-size="11" fill="#88a793">memory 指向的原生内存，同样按列排布</text>
-  <line x1="170" y1="43" x2="230" y2="49" stroke="#4a6fa5" stroke-width="1.5" marker-end="url(#a2)"></line>
-  <line x1="170" y1="52" x2="230" y2="180" stroke="#3f9d6d" stroke-width="1.5" marker-end="url(#a2)"></line>
+<svg role="img" viewBox="0 0 720 360" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto">
+  <rect x="20" y="20" width="150" height="46" fill="none" stroke="currentColor"></rect>
+  <text x="95" y="40" text-anchor="middle" font-size="13" font-weight="bold" fill="currentColor">EntityManager</text>
+  <text x="95" y="57" text-anchor="middle" font-size="11" fill="currentColor">两个基址指针</text>
+  <rect x="230" y="14" width="220" height="70" fill="none" stroke="currentColor"></rect>
+  <text x="340" y="34" text-anchor="middle" font-size="12" font-weight="bold" fill="currentColor" opacity="0.82">EntityInstanceData[]</text>
+  <text x="340" y="52" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.82">按 globalIndex 索引，每槽 0x10</text>
+  <text x="340" y="70" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.82">{entityType, entityIdx, version}</text>
+  <rect x="230" y="110" width="470" height="230" fill="none" stroke="currentColor"></rect>
+  <text x="465" y="132" text-anchor="middle" font-size="12" font-weight="bold" fill="currentColor">EntityTypeInstanceData[]  ·  每块 0x240</text>
+  <rect x="250" y="150" width="430" height="80" fill="none" stroke="currentColor"></rect>
+  <text x="465" y="168" text-anchor="middle" font-size="11" fill="currentColor">archetype A：组件集 {Position(0x0C), Rotation(0x10)}</text>
+  <rect x="262" y="180" width="180" height="34" fill="none" stroke="currentColor"></rect>
+  <text x="352" y="201" text-anchor="middle" font-size="11" fill="currentColor">Position[0..count]  连续</text>
+  <rect x="452" y="180" width="216" height="34" fill="none" stroke="currentColor"></rect>
+  <text x="560" y="201" text-anchor="middle" font-size="11" fill="currentColor">Rotation[0..count]  连续</text>
+  <rect x="250" y="250" width="430" height="70" fill="none" stroke="currentColor"></rect>
+  <text x="465" y="268" text-anchor="middle" font-size="11" fill="currentColor">archetype B：组件集 {Position, Renderer}</text>
+  <text x="465" y="296" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.82">memory 指向的原生内存，同样按列排布</text>
+  <line x1="170" y1="43" x2="230" y2="49" stroke="currentColor" stroke-width="1.5" marker-end="url(#a2)"></line>
+  <line x1="170" y1="52" x2="230" y2="180" stroke="currentColor" stroke-width="1.5" marker-end="url(#a2)"></line>
   <defs>
     <marker id="a2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-      <path d="M0,0 L6,3 L0,6 Z" fill="#666"></path>
+      <path d="M0,0 L6,3 L0,6 Z" fill="currentColor" opacity="0.82"></path>
     </marker>
   </defs>
 </svg>
@@ -98,54 +98,54 @@
 <h2 id="无-system-层查询即并行调度">无 System 层：查询即并行调度<a class="anchor" href="#无-system-层查询即并行调度"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
 <p>这套 ECS 里没有 <code>SystemBase</code> 或 <code>ISystem</code> 这样的 System 基类。承担 System 角色的是 <code>IJob</code> 加 Burst 编译的委托——每个功能是一个 Job，比如把 TRS 批量算成矩阵、批量更新渲染数据。</p>
 <p>查询和调度是连在一起的。查询构造器分别累积 include 和 exclude 两个掩码，执行时先把两个掩码物化，再遍历所有 archetype 按掩码过滤，得到一个 archetype 迭代器，然后按块大小把每个匹配 archetype 切成若干 <code>BlockRange</code>。<code>BlockRange</code> 就是官方 DOTS 里 <code>ArchetypeChunk</code> 的对应物：一个 archetype 块内连续若干行实体的视图，是 Job 并行的最小粒度。</p>
-<svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;font-family:sans-serif">
-  <rect x="14" y="70" width="128" height="56" rx="5" fill="#eef3fb" stroke="#4a6fa5"></rect>
-  <text x="78" y="93" text-anchor="middle" font-size="12" font-weight="bold" fill="#2c4a75">QueryBuilder</text>
-  <text x="78" y="112" text-anchor="middle" font-size="11" fill="#40556f">include / exclude</text>
-  <rect x="172" y="70" width="128" height="56" rx="5" fill="#eafaf1" stroke="#3f9d6d"></rect>
-  <text x="236" y="93" text-anchor="middle" font-size="12" font-weight="bold" fill="#2f7150">按掩码过滤</text>
-  <text x="236" y="112" text-anchor="middle" font-size="11" fill="#3a6650">EntityManagerRange</text>
-  <rect x="330" y="70" width="128" height="56" rx="5" fill="#fff6e6" stroke="#c99a3a"></rect>
-  <text x="394" y="93" text-anchor="middle" font-size="12" font-weight="bold" fill="#8a6a1e">切分</text>
-  <text x="394" y="112" text-anchor="middle" font-size="11" fill="#8a6a1e">BlockRange × N</text>
-  <rect x="488" y="44" width="128" height="34" rx="5" fill="#f5f5f5" stroke="#999"></rect>
-  <text x="552" y="66" text-anchor="middle" font-size="11" fill="#555">IJob + Burst</text>
-  <rect x="488" y="86" width="128" height="34" rx="5" fill="#f5f5f5" stroke="#999"></rect>
-  <text x="552" y="108" text-anchor="middle" font-size="11" fill="#555">IJob + Burst</text>
-  <rect x="488" y="128" width="128" height="34" rx="5" fill="#f5f5f5" stroke="#999"></rect>
-  <text x="552" y="150" text-anchor="middle" font-size="11" fill="#555">IJob + Burst</text>
-  <line x1="142" y1="98" x2="172" y2="98" stroke="#666" stroke-width="1.5" marker-end="url(#a3)"></line>
-  <line x1="300" y1="98" x2="330" y2="98" stroke="#666" stroke-width="1.5" marker-end="url(#a3)"></line>
-  <line x1="458" y1="90" x2="488" y2="61" stroke="#666" stroke-width="1.5" marker-end="url(#a3)"></line>
-  <line x1="458" y1="98" x2="488" y2="103" stroke="#666" stroke-width="1.5" marker-end="url(#a3)"></line>
-  <line x1="458" y1="106" x2="488" y2="145" stroke="#666" stroke-width="1.5" marker-end="url(#a3)"></line>
-</svg><p><text x="360" y="184" text-anchor="middle" font-size="11" fill="#888">jobCount 参数贯穿过滤、切分与调度全链路</text></p>
+<svg role="img" viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto">
+  <rect x="14" y="70" width="128" height="56" fill="none" stroke="currentColor"></rect>
+  <text x="78" y="93" text-anchor="middle" font-size="12" font-weight="bold" fill="currentColor">QueryBuilder</text>
+  <text x="78" y="112" text-anchor="middle" font-size="11" fill="currentColor">include / exclude</text>
+  <rect x="172" y="70" width="128" height="56" fill="none" stroke="currentColor"></rect>
+  <text x="236" y="93" text-anchor="middle" font-size="12" font-weight="bold" fill="currentColor">按掩码过滤</text>
+  <text x="236" y="112" text-anchor="middle" font-size="11" fill="currentColor">EntityManagerRange</text>
+  <rect x="330" y="70" width="128" height="56" fill="none" stroke="currentColor"></rect>
+  <text x="394" y="93" text-anchor="middle" font-size="12" font-weight="bold" fill="currentColor">切分</text>
+  <text x="394" y="112" text-anchor="middle" font-size="11" fill="currentColor">BlockRange × N</text>
+  <rect x="488" y="44" width="128" height="34" fill="none" stroke="currentColor"></rect>
+  <text x="552" y="66" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.82">IJob + Burst</text>
+  <rect x="488" y="86" width="128" height="34" fill="none" stroke="currentColor"></rect>
+  <text x="552" y="108" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.82">IJob + Burst</text>
+  <rect x="488" y="128" width="128" height="34" fill="none" stroke="currentColor"></rect>
+  <text x="552" y="150" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.82">IJob + Burst</text>
+  <line x1="142" y1="98" x2="172" y2="98" stroke="currentColor" stroke-width="1.5" marker-end="url(#a3)"></line>
+  <line x1="300" y1="98" x2="330" y2="98" stroke="currentColor" stroke-width="1.5" marker-end="url(#a3)"></line>
+  <line x1="458" y1="90" x2="488" y2="61" stroke="currentColor" stroke-width="1.5" marker-end="url(#a3)"></line>
+  <line x1="458" y1="98" x2="488" y2="103" stroke="currentColor" stroke-width="1.5" marker-end="url(#a3)"></line>
+  <line x1="458" y1="106" x2="488" y2="145" stroke="currentColor" stroke-width="1.5" marker-end="url(#a3)"></line>
+</svg><p><text x="360" y="184" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.82">jobCount 参数贯穿过滤、切分与调度全链路</text></p>
   <defs>
     <marker id="a3" markerwidth="8" markerheight="8" refx="6" refy="3" orient="auto">
-      <path d="M0,0 L6,3 L0,6 Z" fill="#666">
+      <path d="M0,0 L6,3 L0,6 Z" fill="currentColor" opacity="0.82">
     </path></marker>
   </defs>
 
 <p>一个 <code>jobCount</code> 参数从查询入口一直传到块切分和 Job 调度，也就是说并行度在查询阶段就确定了下来。还有一条延迟查询路径，返回一个可以在 worker 线程里迭代 <code>BlockRange</code> 的延迟结果，对应官方 DOTS 的 <code>IJobChunk</code> 模式，让 Job 在工作线程内消费查询结果而不阻塞主线程。</p>
 <h2 id="逻辑与渲染分成两个-world">逻辑与渲染分成两个 World<a class="anchor" href="#逻辑与渲染分成两个-world"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
 <p>系统同时维护两个独立的 World，各自有独立的槽位表和 archetype 注册表：</p>
-<svg viewBox="0 0 720 210" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;font-family:sans-serif">
-  <rect x="30" y="30" width="280" height="140" rx="6" fill="#eef3fb" stroke="#4a6fa5"></rect>
-  <text x="170" y="54" text-anchor="middle" font-size="13" font-weight="bold" fill="#2c4a75">Gameplay World</text>
-  <text x="170" y="78" text-anchor="middle" font-size="11" fill="#40556f">逻辑数据</text>
-  <text x="170" y="96" text-anchor="middle" font-size="11" fill="#40556f">对象状态 · 连接关系 · 资源产出</text>
-  <text x="170" y="120" text-anchor="middle" font-size="11" fill="#7a8aa0">由玩法逻辑写入</text>
-  <rect x="410" y="30" width="280" height="140" rx="6" fill="#eafaf1" stroke="#3f9d6d"></rect>
-  <text x="550" y="54" text-anchor="middle" font-size="13" font-weight="bold" fill="#2f7150">Renderer World</text>
-  <text x="550" y="78" text-anchor="middle" font-size="11" fill="#3a6650">渲染数据：LocalToWorld</text>
-  <text x="550" y="96" text-anchor="middle" font-size="11" fill="#3a6650">流体 / 植被 / Culling 参数组件</text>
-  <text x="550" y="120" text-anchor="middle" font-size="11" fill="#8aa596">由渲染 Job 读取，GPU 消费</text>
-  <line x1="310" y1="100" x2="410" y2="100" stroke="#666" stroke-width="1.5" marker-end="url(#a4)"></line>
-  <text x="360" y="92" text-anchor="middle" font-size="11" fill="#666">Binder</text>
-  <text x="360" y="150" text-anchor="middle" font-size="11" fill="#999">逻辑 → 表现 单向同步</text>
+<svg role="img" viewBox="0 0 720 210" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto">
+  <rect x="30" y="30" width="280" height="140" fill="none" stroke="currentColor"></rect>
+  <text x="170" y="54" text-anchor="middle" font-size="13" font-weight="bold" fill="currentColor">Gameplay World</text>
+  <text x="170" y="78" text-anchor="middle" font-size="11" fill="currentColor">逻辑数据</text>
+  <text x="170" y="96" text-anchor="middle" font-size="11" fill="currentColor">对象状态 · 连接关系 · 资源产出</text>
+  <text x="170" y="120" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.82">由玩法逻辑写入</text>
+  <rect x="410" y="30" width="280" height="140" fill="none" stroke="currentColor"></rect>
+  <text x="550" y="54" text-anchor="middle" font-size="13" font-weight="bold" fill="currentColor">Renderer World</text>
+  <text x="550" y="78" text-anchor="middle" font-size="11" fill="currentColor">渲染数据：LocalToWorld</text>
+  <text x="550" y="96" text-anchor="middle" font-size="11" fill="currentColor">流体 / 植被 / Culling 参数组件</text>
+  <text x="550" y="120" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.82">由渲染 Job 读取，GPU 消费</text>
+  <line x1="310" y1="100" x2="410" y2="100" stroke="currentColor" stroke-width="1.5" marker-end="url(#a4)"></line>
+  <text x="360" y="92" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.82">Binder</text>
+  <text x="360" y="150" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.82">逻辑 → 表现 单向同步</text>
   <defs>
     <marker id="a4" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-      <path d="M0,0 L6,3 L0,6 Z" fill="#666"></path>
+      <path d="M0,0 L6,3 L0,6 Z" fill="currentColor" opacity="0.82"></path>
     </marker>
   </defs>
 </svg>
