@@ -1,0 +1,265 @@
+<!DOCTYPE html><html lang="zh-CN" data-astro-cid-cymvyra4> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>卡片箔面材质的数据化分层与 GPU 测量 · Shrei</title><meta name="description" content="为每种稀有度复制一份箔面材质，层之间会逐渐分叉：一个 profile 修了彩虹采样，另一个仍用旧公式。相反的结构是只保留一套 WebGL2 ShaderMaterial，稀有度差异全部下沉到数据化的 RarityProfile 与纹理 mask。本文拆解这套分层如何保持可解释，以及调试视图、确定性 seed、色彩空间与 timer query 各自划出的可验证边界。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/35-card-foil-data-driven-material-profile/"><meta property="og:title" content="卡片箔面材质的数据化分层与 GPU 测量 · Shrei"><meta property="og:description" content="为每种稀有度复制一份箔面材质，层之间会逐渐分叉：一个 profile 修了彩虹采样，另一个仍用旧公式。相反的结构是只保留一套 WebGL2 ShaderMaterial，稀有度差异全部下沉到数据化的 RarityProfile 与纹理 mask。本文拆解这套分层如何保持可解释，以及调试视图、确定性 seed、色彩空间与 timer query 各自划出的可验证边界。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/35-card-foil-data-driven-material-profile/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><!-- 同步主站主题选择：light/dark 显式跟随，auto 或无记录按本地时间。
+             data-theme 取 expressive-code 主题名，同时驱动 light-dark() 色板与代码块配色 --><script>
+            (function () {
+                let stored = null;
+                try {
+                    stored = localStorage.getItem('shrei-theme');
+                } catch (_) {
+                    /* 隐私模式下不可用，按本地时间自动选择 */
+                }
+                const isNight = () => {
+                    const hour = new Date().getHours();
+                    return hour < 6 || hour >= 18;
+                };
+                const themeColor = document.querySelector('[data-theme-color]');
+                const apply = () => {
+                    const dark = stored === 'dark' || (stored !== 'light' && isNight());
+                    document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
+                    if (themeColor) {
+                        themeColor.content = dark ? '#151412' : '#f4f2ec';
+                    }
+                };
+                apply();
+                if (stored !== 'light' && stored !== 'dark') {
+                    const schedule = () => {
+                        const now = new Date();
+                        const next = new Date(now);
+                        if (now.getHours() < 6) {
+                            next.setHours(6, 0, 0, 0);
+                        } else if (now.getHours() < 18) {
+                            next.setHours(18, 0, 0, 0);
+                        } else {
+                            next.setDate(next.getDate() + 1);
+                            next.setHours(6, 0, 0, 0);
+                        }
+                        window.setTimeout(() => {
+                            apply();
+                            schedule();
+                        }, Math.max(1000, next.getTime() - now.getTime()));
+                    };
+                    schedule();
+                }
+            })();
+        </script><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"><style>:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}.topbar[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-cymvyra4]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-cymvyra4]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-cymvyra4]:hover{color:var(--red)}.center[data-astro-cid-cymvyra4]{min-width:0;text-align:center}.to-home[data-astro-cid-cymvyra4]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-cymvyra4]:hover{color:var(--red)}.to-home[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(.25em)}footer[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]{transition:color .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover{color:var(--red)}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(-.25em)}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-cymvyra4]{grid-template-columns:1fr auto}.center[data-astro-cid-cymvyra4]{display:none}footer[data-astro-cid-cymvyra4]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:start}}@media print{.topbar[data-astro-cid-cymvyra4] .to-home[data-astro-cid-cymvyra4],footer[data-astro-cid-cymvyra4]{display:none}}
+</style><link rel="stylesheet" href="/blog/astro/_slug_.Cj97UYPf.css"></head> <body data-astro-cid-cymvyra4> <div class="frame" data-astro-cid-cymvyra4> <div class="topbar micro" data-astro-cid-cymvyra4> <a class="brand" href="/blog/minimalist/" data-astro-cid-cymvyra4>Shrei — Technical Index</a> <div class="center" data-astro-cid-cymvyra4><span class="topbar-category" data-astro-cid-wy3xnbws>图形渲染</span></div> <a class="to-home" href="/blog/" data-astro-cid-cymvyra4>
+博客主站 <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-wy3xnbws> <p class="category micro" data-astro-cid-wy3xnbws>图形渲染</p> <h1 data-astro-cid-wy3xnbws> 卡片箔面材质的数据化分层与 GPU 测量  </h1> <div class="meta micro" data-astro-cid-wy3xnbws> <time datetime="2026-08-21" data-astro-cid-wy3xnbws>2026-08-21</time> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>14 min</span> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>5,275 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span class="tags" data-astro-cid-wy3xnbws>WebGL2 / GLSL / Shader / Material / Data Driven / GPU Profiling</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#profile-作为材质协议" data-astro-cid-wy3xnbws>Profile 作为材质协议</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#mask-负责哪里发生参数负责发生多强" data-astro-cid-wy3xnbws>Mask 负责“哪里发生”，参数负责“发生多强”</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#统一-lighting-层避免全局加亮" data-astro-cid-wy3xnbws>统一 lighting 层避免“全局加亮”</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#rainbow-lut-负责视角相位" data-astro-cid-wy3xnbws>Rainbow LUT 负责视角相位</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#pattern-与-sparkle-是两个不同尺度" data-astro-cid-wy3xnbws>Pattern 与 Sparkle 是两个不同尺度</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#shard跟随主体的碎闪" data-astro-cid-wy3xnbws>Shard：跟随主体的碎闪</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#quality-只改变计算密度" data-astro-cid-wy3xnbws>Quality 只改变计算密度</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#debug-view-是材质的可观测接口" data-astro-cid-wy3xnbws>Debug view 是材质的可观测接口</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#gpu-timer-query-只在有证据时显示" data-astro-cid-wy3xnbws>GPU timer query 只在有证据时显示</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#跨平台移植保留四份数据" data-astro-cid-wy3xnbws>跨平台移植保留四份数据</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#结论" data-astro-cid-wy3xnbws>结论</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+</a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <p>卡片箔面常见的实现方式是为每种稀有度复制一份材质，再在复制品里调整颜色、纹理和高光。这样视觉变化很快能做出来，但层之间会逐渐分叉：某个 profile 修了彩虹采样，另一个 profile 仍使用旧公式；UI 改了 slider，shader uniform 却没有更新；低质量档静默切换到另一条路径，结果既无法解释也无法测量。</p>
+<p>可行的结构正相反：只有一套 WebGL2 <code>ShaderMaterial</code>，八种稀有度由 <code>RarityProfile</code> 数据驱动。Profile 保存 mask 权重、表面参数、虹彩参数、图案、碎闪、动画、色调与 seed；shader 只负责解释这些数据。下面的字段、调试视图和测量口径取自一个卡牌箔面的实现。</p>
+<p>材质分层顺序固定为：</p>
+<div class="expressive-code"><link rel="stylesheet" href="/blog/astro/ec.iz9dg.css"><script type="module" src="/blog/astro/ec.0vx5m.js"></script><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">cardArt + mask</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> foil region</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> relief normal</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> diffuse / specular / Fresnel / clear-coat</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> rainbow LUT</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> line / cross / grid / cell pattern</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> sparkle + Voronoi shard</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">8</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> tone map</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="cardArt + mask  -> foil region  -> relief normal  -> diffuse / specular / Fresnel / clear-coat  -> rainbow LUT  -> line / cross / grid / cell pattern  -> sparkle + Voronoi shard  -> tone map"><div></div></button></div></figure></div>
+<p>普通卡可以关闭箔面和晶片，Starlight 可以提高晶格、虹彩和碎闪密度；两者走的是同一套代码路径，只消费不同数据。</p>
+<hr>
+<h2 id="profile-作为材质协议">Profile 作为材质协议<a class="anchor" href="#profile-作为材质协议"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<svg id="svg-card-foil-profile" viewBox="0 0 760 410" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto" role="img" aria-label="RarityProfile 数据进入统一卡片箔面 shader 的材质分层">
+  <style>
+    #svg-card-foil-profile .b{fill:none;stroke:currentColor;stroke-width:1.4}
+    #svg-card-foil-profile .fill{fill:currentColor;fill-opacity:0.07;stroke:currentColor;stroke-width:1.4}
+    #svg-card-foil-profile .t{fill:currentColor;font-family:sans-serif;font-size:12px}
+    #svg-card-foil-profile .s{fill:currentColor;font-family:sans-serif;font-size:10.5px;opacity:0.82}
+    #svg-card-foil-profile .a{fill:none;stroke:currentColor;stroke-width:1.4;marker-end:url(#foil-profile-arrow)}
+  </style>
+  <defs>
+    <marker id="foil-profile-arrow" markerWidth="8" height="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="currentColor"></path>
+    </marker>
+  </defs>
+  <rect class="fill" x="22" y="24" width="210" height="74"></rect>
+  <text class="t" x="127" y="50" text-anchor="middle">RarityProfile</text>
+  <text class="s" x="127" y="70" text-anchor="middle">mask / surface / film</text>
+  <text class="s" x="127" y="86" text-anchor="middle">pattern / sparkle / shard / seed</text>
+  <rect class="b" x="275" y="24" width="210" height="74"></rect>
+  <text class="t" x="380" y="50" text-anchor="middle">normalizeProfile</text>
+  <text class="s" x="380" y="70" text-anchor="middle">clamp + enum mapping</text>
+  <text class="s" x="380" y="86" text-anchor="middle">UI override → uniform state</text>
+  <rect class="fill" x="528" y="24" width="210" height="74"></rect>
+  <text class="t" x="633" y="50" text-anchor="middle">One ShaderMaterial</text>
+  <text class="s" x="633" y="70" text-anchor="middle">GLSL layer functions</text>
+  <text class="s" x="633" y="86" text-anchor="middle">no profile-specific shader copy</text>
+  <path class="a" d="M232 61 H275"></path>
+  <path class="a" d="M485 61 H528"></path>
+  <rect class="b" x="22" y="160" width="210" height="62"></rect>
+  <text class="t" x="127" y="186" text-anchor="middle">maskMap / reliefMap</text>
+  <text class="s" x="127" y="206" text-anchor="middle">区域与高度输入</text>
+  <rect class="b" x="275" y="160" width="210" height="62"></rect>
+  <text class="t" x="380" y="186" text-anchor="middle">材质层</text>
+  <text class="s" x="380" y="206" text-anchor="middle">foil / normal / lighting</text>
+  <rect class="b" x="528" y="160" width="210" height="62"></rect>
+  <text class="t" x="633" y="186" text-anchor="middle">debug views</text>
+  <text class="s" x="633" y="206" text-anchor="middle">base / mask / pattern / relief / rainbow</text>
+  <path class="a" d="M127 98 V160"></path>
+  <path class="a" d="M380 98 V160"></path>
+  <path class="a" d="M633 98 V160"></path>
+  <rect class="fill" x="150" y="284" width="460" height="72"></rect>
+  <text class="t" x="380" y="310" text-anchor="middle">final = toneMap(base + foil + shard + Fresnel)</text>
+  <text class="s" x="380" y="331" text-anchor="middle">同一组合顺序支撑八种 profile 与跨引擎移植</text>
+  <path class="a" d="M380 222 V284"></path>
+</svg>
+<p>Profile 的类型把参数分成独立结构：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="ts"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#F97583;--1:#BF3441">interface</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#B392F0;--1:#6F42C1">RarityProfile</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">{</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent">  </span><span style="--0:#FFAB70;--1:#AE4B07">mask</span><span style="--0:#F97583;--1:#BF3441">:</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#B392F0;--1:#6F42C1">MaskWeights</span><span style="--0:#E1E4E8;--1:#24292E">;</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent">  </span><span style="--0:#FFAB70;--1:#AE4B07">surface</span><span style="--0:#F97583;--1:#BF3441">:</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#B392F0;--1:#6F42C1">SurfaceParams</span><span style="--0:#E1E4E8;--1:#24292E">;</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span class="indent">  </span><span style="--0:#FFAB70;--1:#AE4B07">iridescence</span><span style="--0:#F97583;--1:#BF3441">:</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#B392F0;--1:#6F42C1">IridescenceParams</span><span style="--0:#E1E4E8;--1:#24292E">;</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span class="indent">  </span><span style="--0:#FFAB70;--1:#AE4B07">pattern</span><span style="--0:#F97583;--1:#BF3441">:</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#B392F0;--1:#6F42C1">PatternParams</span><span style="--0:#E1E4E8;--1:#24292E">;</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span class="indent">  </span><span style="--0:#FFAB70;--1:#AE4B07">sparkle</span><span style="--0:#F97583;--1:#BF3441">:</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#B392F0;--1:#6F42C1">SparkleParams</span><span style="--0:#E1E4E8;--1:#24292E">;</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">8</div></div><div class="code"><span class="indent">  </span><span style="--0:#FFAB70;--1:#AE4B07">shard</span><span style="--0:#F97583;--1:#BF3441">:</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#B392F0;--1:#6F42C1">ShardParams</span><span style="--0:#E1E4E8;--1:#24292E">;</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">9</div></div><div class="code"><span class="indent">  </span><span style="--0:#FFAB70;--1:#AE4B07">animation</span><span style="--0:#F97583;--1:#BF3441">:</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#B392F0;--1:#6F42C1">AnimationParams</span><span style="--0:#E1E4E8;--1:#24292E">;</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">10</div></div><div class="code"><span class="indent">  </span><span style="--0:#FFAB70;--1:#AE4B07">tint</span><span style="--0:#F97583;--1:#BF3441">:</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#B392F0;--1:#6F42C1">Vec3</span><span style="--0:#E1E4E8;--1:#24292E">;</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">11</div></div><div class="code"><span class="indent">  </span><span style="--0:#FFAB70;--1:#AE4B07">foilTint</span><span style="--0:#F97583;--1:#BF3441">:</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#B392F0;--1:#6F42C1">Vec3</span><span style="--0:#E1E4E8;--1:#24292E">;</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">12</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">}</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="interface RarityProfile{  mask: MaskWeights;  surface: SurfaceParams;  iridescence: IridescenceParams;  pattern: PatternParams;  sparkle: SparkleParams;  shard: ShardParams;  animation: AnimationParams;  tint: Vec3;  foilTint: Vec3;}"><div></div></button></div></figure></div>
+<p>这使“稀有度是什么”成为数据问题，而“如何计算箔面”仍是 shader 问题。八个 profile 的差异可以明确描述：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Profile</th><th>主要变化</th></tr></thead><tbody><tr><td>Normal</td><td>高粗糙度、低高光、无 foil 与 shard</td></tr><tr><td>Super</td><td>平面箔、斜线和弱闪点</td></tr><tr><td>Ultra</td><td>名称/图像区域的金属高光</td></tr><tr><td>Secret</td><td>彩虹膜、交叉纹与中等碎闪</td></tr><tr><td>Starlight</td><td>全卡晶格、强虹彩、高密度碎闪</td></tr><tr><td>Ghost</td><td>低饱和银灰膜面，依赖视角高光</td></tr><tr><td>Ultimate</td><td>高度与粗糙度变化主导浮雕</td></tr><tr><td>Collector</td><td>细密纹理、碎闪、边框箔与浮雕</td></tr></tbody></table>
+<p>Profile 不保存 shader 代码，也不复制 GLSL。这样修复 <code>sampleSpectralDispersion</code> 或 <code>shardValue</code> 时，所有稀有度共同接受同一修改。</p>
+<h2 id="mask-负责哪里发生参数负责发生多强">Mask 负责“哪里发生”，参数负责“发生多强”<a class="anchor" href="#mask-负责哪里发生参数负责发生多强"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p><code>maskMap</code> 的四个通道约定为：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">R = artwork</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">G = name</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">B = attribute</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">A = level / symbol</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="R = artworkG = nameB = attributeA = level / symbol"><div></div></button></div></figure></div>
+<p>Profile 的 <code>uMaskWeights</code> 对这四个通道做加权，得到印刷区域的箔面候选。<code>uMaskSecondary</code> 再提供 border、foil、relief、body 权重。边框不占用贴图通道，而由外圆角矩形减内圆角矩形生成：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="glsl"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#F97583;--1:#BF3441">float</span><span style="--0:#E1E4E8;--1:#24292E"> borderMask </span><span style="--0:#F97583;--1:#BF3441">=</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent">  </span><span style="--0:#B392F0;--1:#6F42C1">edgeMask</span><span style="--0:#E1E4E8;--1:#24292E">(vUv, radius) </span><span style="--0:#F97583;--1:#BF3441">*</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">  </span></span><span style="--0:#E1E4E8;--1:#24292E">(</span><span style="--0:#79B8FF;--1:#005CC5">1.0</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">-</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#B392F0;--1:#6F42C1">edgeMask</span><span style="--0:#E1E4E8;--1:#24292E">(innerUv, radius));</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="float borderMask =  edgeMask(vUv, radius) *  (1.0 - edgeMask(innerUv, radius));"><div></div></button></div></figure></div>
+<p>这两个层次不能混为一谈。Mask 决定空间区域；<code>roughness</code>、<code>specular</code>、<code>clearCoat</code> 和 <code>globalIntensity</code> 决定响应强度。把全卡 <code>body</code> 直接并入基础 <code>foilMask</code> 会使整张卡变成过曝色块，所以 body 权重只驱动独立 shard region。</p>
+<p><code>reliefMap.R</code> 是线性高度，shader 对中心、X 偏移和 Y 偏移做有限差分，再在 tangent/bitangent 空间构造局部法线。浮雕区域由 mask 与 <code>uReliefStrength</code> 共同控制；它不能复用 edge sheen uniform，否则调边缘高光会同时改变几何起伏。</p>
+<p>贴图色彩空间也有明确边界：</p>
+<ul>
+<li>card art 与 rainbow LUT 使用 sRGB；</li>
+<li>mask、height、未来 roughness/pattern 数据使用线性；</li>
+<li>输出经 tone mapping 后交给 sRGB renderer。</li>
+</ul>
+<h2 id="统一-lighting-层避免全局加亮">统一 lighting 层避免“全局加亮”<a class="anchor" href="#统一-lighting-层避免全局加亮"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>箔面的颜色来自角度，而非叠一层彩色噪声。fragment shader 先由法线、光线和视线计算：</p>
+<ul>
+<li>ambient fill；</li>
+<li>diffuse；</li>
+<li>broad specular；</li>
+<li>sharp specular；</li>
+<li>Fresnel；</li>
+<li>由反射方向形成的 environment band；</li>
+<li>clear-coat 风格的边缘 sheen。</li>
+</ul>
+<p>粗糙度控制宽高光和窄高光的幂次，<code>NdotV</code> 与反射角进入虹彩相位。这样 <code>globalIntensity</code> 只是在已经分层的能量上做总量调节，不会同时放大错误的底色噪声。</p>
+<p>Profile 的 <code>uLighting</code> 目前保存主光强度、环境强度和预留高光参数；UI override 会进入 <code>normalizeProfile</code>，再写入最终 uniform。任何控件只更新 DOM、却不回写 uniform，都属于断链。项目测试会直接检查 override 后的 <code>globalIntensity</code>、光强、虹彩、碎闪、pattern scale 和 sheen speed。</p>
+<h2 id="rainbow-lut-负责视角相位">Rainbow LUT 负责视角相位<a class="anchor" href="#rainbow-lut-负责视角相位"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>虹彩相位由一组共享参数生成，八个 profile 复用同一段 shader 代码：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="glsl"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#F97583;--1:#BF3441">float</span><span style="--0:#E1E4E8;--1:#24292E"> viewAngle </span><span style="--0:#F97583;--1:#BF3441">=</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent">  </span><span style="--0:#79B8FF;--1:#005CC5">1.0</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">-</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">clamp</span><span style="--0:#E1E4E8;--1:#24292E">(</span><span style="--0:#B392F0;--1:#6F42C1">dot</span><span style="--0:#E1E4E8;--1:#24292E">(normal, viewDirection), </span><span style="--0:#79B8FF;--1:#005CC5">0.0</span><span style="--0:#E1E4E8;--1:#24292E">, </span><span style="--0:#79B8FF;--1:#005CC5">1.0</span><span style="--0:#E1E4E8;--1:#24292E">);</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#F97583;--1:#BF3441">float</span><span style="--0:#E1E4E8;--1:#24292E"> reflectedAngle </span><span style="--0:#F97583;--1:#BF3441">=</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent">  </span><span style="--0:#79B8FF;--1:#005CC5">clamp</span><span style="--0:#E1E4E8;--1:#24292E">(</span><span style="--0:#B392F0;--1:#6F42C1">dot</span><span style="--0:#E1E4E8;--1:#24292E">(</span><span style="--0:#B392F0;--1:#6F42C1">reflect</span><span style="--0:#E1E4E8;--1:#24292E">(</span><span style="--0:#F97583;--1:#BF3441">-</span><span style="--0:#E1E4E8;--1:#24292E">lightDirection, normal), viewDirection), </span><span style="--0:#79B8FF;--1:#005CC5">0.0</span><span style="--0:#E1E4E8;--1:#24292E">, </span><span style="--0:#79B8FF;--1:#005CC5">1.0</span><span style="--0:#E1E4E8;--1:#24292E">);</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code">
+</div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span style="--0:#F97583;--1:#BF3441">float</span><span style="--0:#E1E4E8;--1:#24292E"> phase </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">fract</span><span style="--0:#E1E4E8;--1:#24292E">(</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">  </span></span><span style="--0:#E1E4E8;--1:#24292E">film.x </span><span style="--0:#F97583;--1:#BF3441">+</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">8</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">  </span></span><span style="--0:#E1E4E8;--1:#24292E">viewAngle </span><span style="--0:#F97583;--1:#BF3441">*</span><span style="--0:#E1E4E8;--1:#24292E"> film.y </span><span style="--0:#F97583;--1:#BF3441">+</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">9</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">  </span></span><span style="--0:#E1E4E8;--1:#24292E">reflectedAngle </span><span style="--0:#F97583;--1:#BF3441">*</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">0.16</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">+</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">10</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">  </span></span><span style="--0:#E1E4E8;--1:#24292E">dynamicShift</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">11</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">) </span><span style="--0:#F97583;--1:#BF3441">*</span><span style="--0:#E1E4E8;--1:#24292E"> film.z </span><span style="--0:#F97583;--1:#BF3441">+</span><span style="--0:#E1E4E8;--1:#24292E"> film.w;</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="float viewAngle =  1.0 - clamp(dot(normal, viewDirection), 0.0, 1.0);float reflectedAngle =  clamp(dot(reflect(-lightDirection, normal), viewDirection), 0.0, 1.0);float phase = fract(  film.x +  viewAngle * film.y +  reflectedAngle * 0.16 +  dynamicShift) * film.z + film.w;"><div></div></button></div></figure></div>
+<p>随后从横向 1D <code>rainbowLut</code> 采样。<code>thickness</code>、<code>viewShift</code>、LUT scale/offset 和 saturation 都是数据参数；不同 profile 可以改变膜厚与视角响应，而不改变采样代码。</p>
+<p>实体微箔片还使用独立的 RGB 分波采样：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="glsl"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">red   </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#B392F0;--1:#6F42C1">LUT</span><span style="--0:#E1E4E8;--1:#24292E">(phase </span><span style="--0:#F97583;--1:#BF3441">+</span><span style="--0:#E1E4E8;--1:#24292E"> spread).r;</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">green </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#B392F0;--1:#6F42C1">LUT</span><span style="--0:#E1E4E8;--1:#24292E">(phase).g;</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">blue  </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#B392F0;--1:#6F42C1">LUT</span><span style="--0:#E1E4E8;--1:#24292E">(phase </span><span style="--0:#F97583;--1:#BF3441">-</span><span style="--0:#E1E4E8;--1:#24292E"> spread).b;</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="red   = LUT(phase + spread).r;green = LUT(phase).g;blue  = LUT(phase - spread).b;"><div></div></button></div></figure></div>
+<p><code>uDispersion</code> 只控制局部色散，不把全局金属镜面染成彩色。未命中箔面区域继续保留印刷颜色。</p>
+<h2 id="pattern-与-sparkle-是两个不同尺度">Pattern 与 Sparkle 是两个不同尺度<a class="anchor" href="#pattern-与-sparkle-是两个不同尺度"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>Pattern 是连续表面图案，可选：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">none / diagonal / crosshatch / grid / cells</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="none / diagonal / crosshatch / grid / cells"><div></div></button></div></figure></div>
+<p>所有模式都先对 UV 乘 <code>patternScale</code>。斜线与交叉线使用周期函数，grid 分别对 X/Y 计算线，cells 使用 cell hash。若只让 <code>patternScale</code> 影响 Voronoi 而不影响 line/grid，UI 看似生效，画面却会保留旧的大线条。</p>
+<p>Sparkle 是独立的稀疏闪点：</p>
+<ol>
+<li>UV 乘 density 得到 cell；</li>
+<li>hash 决定 cell 内位置、半径与闪烁阈值；</li>
+<li><code>uSparkleSeed</code> 决定空间分布；</li>
+<li>时间和 animation speed 决定闪烁。</li>
+</ol>
+<p>Seed 与 intensity 必须是两个 uniform。若把 seed 借用 intensity 通道，调亮度会改变闪点分布，profile 切换也无法保持确定性。</p>
+<h2 id="shard跟随主体的碎闪">Shard：跟随主体的碎闪<a class="anchor" href="#shard跟随主体的碎闪"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>主体晶片层由 Voronoi cell、随机方向细长箔片和切线空间微法线组成：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">Voronoi cell</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> selected coverage</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> random flake angle / width / length</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> micro normal</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> tangent-half alignment</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> broad flash + sharp flash</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="Voronoi cell  -> selected coverage  -> random flake angle / width / length  -> micro normal  -> tangent-half alignment  -> broad flash + sharp flash"><div></div></button></div></figure></div>
+<p>cell 只在 profile 的 <code>coverage</code> 下被选中。碎片方向由 cell seed 决定，微法线和 tangent-space half vector 的夹角再控制闪光。没有方向对齐时，晶片不会整片常亮；这避免了“漂浮的大色片”。</p>
+<p><code>ShardParams</code> 独立保存 scale、coverage、rotation 与 contrast；<code>uShard</code> 不与基础 foil mask 共用。body 权重只进入：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="glsl"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#F97583;--1:#BF3441">float</span><span style="--0:#E1E4E8;--1:#24292E"> shardRegion </span><span style="--0:#F97583;--1:#BF3441">=</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent">  </span><span style="--0:#79B8FF;--1:#005CC5">max</span><span style="--0:#E1E4E8;--1:#24292E">(maskSample.r, uMaskSecondary.w) </span><span style="--0:#F97583;--1:#BF3441">*</span><span style="--0:#E1E4E8;--1:#24292E"> uMaskSecondary.y;</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="float shardRegion =  max(maskSample.r, uMaskSecondary.w) * uMaskSecondary.y;"><div></div></button></div></figure></div>
+<p>这项隔离是材质结构的关键。全卡 body 可以允许 Starlight 有更多晶片，但不会把整张卡的虹彩底膜变成同样密度的彩色块。</p>
+<h2 id="quality-只改变计算密度">Quality 只改变计算密度<a class="anchor" href="#quality-只改变计算密度"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>High 使用 profile 原始 cell density；Low 显式降低程序化 cell density，但保留同一个 profile、mask 语义和材质层顺序。质量切换不能静默改成另一种材质，也不能在 WebGL2 创建失败时悄悄降级到 WebGL1。</p>
+<p>项目首版把 WebGL2 作为硬前提。无法创建 WebGL2 时页面显示明确错误；shader 编译状态也必须明确报告 ready 或失败，不能在编译失败时仍显示可用材质。</p>
+<p>这项约束使性能与视觉差异可解释：Low/High 的变化主要来自程序化计算密度，而不是隐藏 fallback。跨 Unity、Unreal 或 WGSL 移植时，也应保留同样的显式质量参数。</p>
+<h2 id="debug-view-是材质的可观测接口">Debug view 是材质的可观测接口<a class="anchor" href="#debug-view-是材质的可观测接口"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>单看 final 很难判断问题出在 mask、pattern 还是 lighting。统一 shader 暴露六个 debug view：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>view</th><th>内容</th></tr></thead><tbody><tr><td><code>base</code></td><td>只有印刷卡图</td></tr><tr><td><code>foil-mask</code></td><td>profile 加权后的箔面区域</td></tr><tr><td><code>pattern</code></td><td>UV 图案原始值</td></tr><tr><td><code>relief</code></td><td>浮雕区域与高度影响</td></tr><tr><td><code>rainbow</code></td><td>当前角度的 LUT 颜色</td></tr><tr><td><code>final</code></td><td>完整组合结果</td></tr></tbody></table>
+<p>这些视图共享一个 <code>uDebugView</code> uniform，不复制 shader。它们把常见错误分段：</p>
+<ul>
+<li>title/attribute/level 翻转：检查 UV 与 mask canvas 的 <code>cardV</code>；</li>
+<li>卡外出现颜色：检查圆角边界 discard 与 border mask；</li>
+<li>profile 变了但 slider 仍显示旧值：检查 UI 状态到 normalize 的同步；</li>
+<li>pattern 只剩大块线：检查 scale 是否进入全部 line/grid/cell 分支；</li>
+<li>relief 调节同时改变边缘光：检查 uniform 是否意外复用。</li>
+</ul>
+<p>Debug view 也是跨引擎合同的一部分。移植到 HLSL、Material Function 或 WGSL 后若只保留 final，就失去定位层级错位的最便宜手段。</p>
+<h2 id="gpu-timer-query-只在有证据时显示">GPU timer query 只在有证据时显示<a class="anchor" href="#gpu-timer-query-只在有证据时显示"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>浏览器 CPU frame time 不能直接代表 fragment shader 的 GPU 成本。<code>GpuFrameTimer</code> 使用 <code>EXT_disjoint_timer_query_webgl2</code>：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">beginQuery</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> draw</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> endQuery</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> poll QUERY_RESULT_AVAILABLE</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> 检查 GPU_DISJOINT_EXT</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> 纳秒转毫秒</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="beginQuery  -> draw  -> endQuery  -> poll QUERY_RESULT_AVAILABLE  -> 检查 GPU_DISJOINT_EXT  -> 纳秒转毫秒"><div></div></button></div></figure></div>
+<p>如果扩展不存在、query 创建失败、结果尚未 ready，UI 保留上一次有效值或显示 <code>GPU n/a</code>；如果发生 disjoint，则丢弃当前样本。它不会把 CPU 时间冒充 GPU 时间。</p>
+<p>Chrome 151 / Windows 10 / WebGL2 的基线中，Normal high 约 <code>0.07–0.08 ms</code> GPU frame time，Starlight high 约 <code>0.35 ms</code>。这些数字绑定浏览器、驱动、分辨率、质量档和当前硬件，只能作为该环境的验收基线，不能写成普遍性能保证。</p>
+<p>自动验证还会遍历八种 profile、Low/High、debug view 和关键 override，确认 shader 编译、profile 参数同步、pattern scale 与 mask 边界没有回归。</p>
+<h2 id="跨平台移植保留四份数据">跨平台移植保留四份数据<a class="anchor" href="#跨平台移植保留四份数据"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p><code>RarityProfile</code> 不依赖 Three.js、DOM 或场景对象。移植时至少保留：</p>
+<ol>
+<li>profile JSON 的字段与单位；</li>
+<li>mask 通道及 UV 原点约定；</li>
+<li>线性色彩空间与 rainbow LUT 采样；</li>
+<li>确定性 hash、seed 和 debug view。</li>
+</ol>
+<p>Unity 可以把 GLSL 函数改写为 HLSL Custom Function 或 Shader Graph Sub Graph；Unreal 可以把每个材质层拆成 Material Function，再将 profile 映射为 Material Instance 参数；WebGPU 则把 shader 模块迁移为 WGSL 并保持 bind group 语义。</p>
+<p>不应把所有层预烘成一张不可解释的颜色噪声。那会丢掉 profile 可调性、debug view 和确定性 seed，也无法验证“普通卡无箔、Ultimate 有浮雕、Starlight 有主体碎闪”这些结构差异。</p>
+<h2 id="结论">结论<a class="anchor" href="#结论"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>数据化材质把稀有度差异放进可检查的参数边界。统一的 mask、表面、虹彩、pattern、sparkle、shard 和 animation 协议让八个 profile 共享组合顺序；独立 seed、色散、浮雕和 body shard 区域避免不同效果互相污染；debug view 让每层都有可观测输出。</p>
+<p>再加上显式 WebGL2 能力要求与真实 timer query，材质系统同时获得了三种稳定性：视觉层级可解释、跨引擎语义可移植、性能数字不在缺少 GPU 证据时被伪造。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-wy3xnbws> <div class="nav-cell" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/36-subject-field-without-neural-network/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 上一篇
+</span> <span class="nav-title" data-astro-cid-wy3xnbws>无神经网络的主体概率场：边框种子、门控扩散与极性锁</span> </a> </div> <div class="nav-cell next" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/34-persistent-code-index-for-agents/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws>
+下一篇 <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8594;</span> </span> <span class="nav-title" data-astro-cid-wy3xnbws>面向 Agent 的持久代码索引：快照式增量、符号级读取与置信边界</span> </a> </div> </nav> </div> </div>  <footer class="micro" data-astro-cid-cymvyra4> <a class="back" href="/blog/minimalist/" data-astro-cid-cymvyra4> <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8592;</span> 返回技术索引 </a> <span class="copy" data-astro-cid-cymvyra4>&copy; 2026 Shrei</span> <span class="colophon" data-astro-cid-cymvyra4>Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div> </body></html> 

@@ -1,0 +1,884 @@
+<!DOCTYPE html><html lang="zh-CN" data-astro-cid-cymvyra4> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>终末地资源的两层保护：判据、排除矩阵与兼容复现 · Shrei</title><meta name="description" content="从&quot;MD5 校验通过但 UnityPy 枚举出 0 个对象&quot;这一矛盾出发，区分 VFS 文件层与 AssetBundle 归档层。记录 key、counter、处理顺序和压缩方言的排除矩阵，以及算法体落入 .tvm0 后如何用强判据、独立约束和全量样本形成兼容实现。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/27-endfield-vfs-two-layer-analysis/"><meta property="og:title" content="终末地资源的两层保护：判据、排除矩阵与兼容复现 · Shrei"><meta property="og:description" content="从&quot;MD5 校验通过但 UnityPy 枚举出 0 个对象&quot;这一矛盾出发，区分 VFS 文件层与 AssetBundle 归档层。记录 key、counter、处理顺序和压缩方言的排除矩阵，以及算法体落入 .tvm0 后如何用强判据、独立约束和全量样本形成兼容实现。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/27-endfield-vfs-two-layer-analysis/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><!-- 同步主站主题选择：light/dark 显式跟随，auto 或无记录按本地时间。
+             data-theme 取 expressive-code 主题名，同时驱动 light-dark() 色板与代码块配色 --><script>
+            (function () {
+                let stored = null;
+                try {
+                    stored = localStorage.getItem('shrei-theme');
+                } catch (_) {
+                    /* 隐私模式下不可用，按本地时间自动选择 */
+                }
+                const isNight = () => {
+                    const hour = new Date().getHours();
+                    return hour < 6 || hour >= 18;
+                };
+                const themeColor = document.querySelector('[data-theme-color]');
+                const apply = () => {
+                    const dark = stored === 'dark' || (stored !== 'light' && isNight());
+                    document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
+                    if (themeColor) {
+                        themeColor.content = dark ? '#151412' : '#f4f2ec';
+                    }
+                };
+                apply();
+                if (stored !== 'light' && stored !== 'dark') {
+                    const schedule = () => {
+                        const now = new Date();
+                        const next = new Date(now);
+                        if (now.getHours() < 6) {
+                            next.setHours(6, 0, 0, 0);
+                        } else if (now.getHours() < 18) {
+                            next.setHours(18, 0, 0, 0);
+                        } else {
+                            next.setDate(next.getDate() + 1);
+                            next.setHours(6, 0, 0, 0);
+                        }
+                        window.setTimeout(() => {
+                            apply();
+                            schedule();
+                        }, Math.max(1000, next.getTime() - now.getTime()));
+                    };
+                    schedule();
+                }
+            })();
+        </script><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"><style>:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}.topbar[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-cymvyra4]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-cymvyra4]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-cymvyra4]:hover{color:var(--red)}.center[data-astro-cid-cymvyra4]{min-width:0;text-align:center}.to-home[data-astro-cid-cymvyra4]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-cymvyra4]:hover{color:var(--red)}.to-home[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(.25em)}footer[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]{transition:color .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover{color:var(--red)}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(-.25em)}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-cymvyra4]{grid-template-columns:1fr auto}.center[data-astro-cid-cymvyra4]{display:none}footer[data-astro-cid-cymvyra4]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:start}}@media print{.topbar[data-astro-cid-cymvyra4] .to-home[data-astro-cid-cymvyra4],footer[data-astro-cid-cymvyra4]{display:none}}
+</style><link rel="stylesheet" href="/blog/astro/_slug_.Cj97UYPf.css"></head> <body data-astro-cid-cymvyra4> <div class="frame" data-astro-cid-cymvyra4> <div class="topbar micro" data-astro-cid-cymvyra4> <a class="brand" href="/blog/minimalist/" data-astro-cid-cymvyra4>Shrei — Technical Index</a> <div class="center" data-astro-cid-cymvyra4><span class="topbar-category" data-astro-cid-wy3xnbws>Unity 逆向</span></div> <a class="to-home" href="/blog/" data-astro-cid-cymvyra4>
+博客主站 <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-wy3xnbws> <p class="category micro" data-astro-cid-wy3xnbws>Unity 逆向</p> <h1 data-astro-cid-wy3xnbws> 终末地资源的两层保护：判据、排除矩阵与兼容复现  </h1> <div class="meta micro" data-astro-cid-wy3xnbws> <time datetime="2026-08-19" data-astro-cid-wy3xnbws>2026-08-19</time> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>53 min</span> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>13,914 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span class="tags" data-astro-cid-wy3xnbws>Reverse Engineering / Unity / IL2CPP / AssetBundle / ChaCha20 / LZ4 / Methodology</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#先说结论" data-astro-cid-wy3xnbws>先说结论</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#第一个判断先数保护层不要先猜算法" data-astro-cid-wy3xnbws>第一个判断：先数保护层，不要先猜算法</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#用最小样本把自己的错误排除掉" data-astro-cid-wy3xnbws>用最小样本把自己的错误排除掉</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#判据先于方法什么才算解对了" data-astro-cid-wy3xnbws>判据先于方法：什么才算”解对了”</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#外层沿入口收敛而不是全局搜关键词" data-astro-cid-wy3xnbws>外层：沿入口收敛，而不是全局搜关键词</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#入口表从类型和方法名建不从字符串建" data-astro-cid-wy3xnbws>入口表从类型和方法名建，不从字符串建</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#一条被调用图否掉的路线" data-astro-cid-wy3xnbws>一条被调用图否掉的路线</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#key-是从指令语义读出来的" data-astro-cid-wy3xnbws>key 是从指令语义读出来的</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#counter-不靠默认值" data-astro-cid-wy3xnbws>counter 不靠默认值</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#排除矩阵只测成功组合等于没测" data-astro-cid-wy3xnbws>排除矩阵：只测成功组合等于没测</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#扩大半径从能解一个到能解全部" data-astro-cid-wy3xnbws>扩大半径：从”能解一个”到”能解全部”</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#第二层先定所有权再谈算法" data-astro-cid-wy3xnbws>第二层：先定所有权，再谈算法</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#用否证走到跨模块边界" data-astro-cid-wy3xnbws>用否证走到跨模块边界</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#tvm0四类证据叠加不看节名" data-astro-cid-wy3xnbws>.tvm0：四类证据叠加，不看节名</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#推进方式切换为兼容复现" data-astro-cid-wy3xnbws>推进方式切换为兼容复现</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#用样本反推格式让约束替我做判断" data-astro-cid-wy3xnbws>用样本反推格式：让约束替我做判断</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#识别式先确认样本属于哪一族" data-astro-cid-wy3xnbws>识别式：先确认样本属于哪一族</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#头字段物理文件尾是第一个强约束" data-astro-cid-wy3xnbws>头字段：物理文件尾是第一个强约束</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#一个字段与它的名字不符不要替它圆场" data-astro-cid-wy3xnbws>一个字段与它的名字不符，不要替它圆场</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#差分实验稀疏加密的判定" data-astro-cid-wy3xnbws>差分实验：稀疏加密的判定</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#用失败点锁定处理顺序与压缩方言" data-astro-cid-wy3xnbws>用失败点锁定处理顺序与压缩方言</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#lz4inv-到底改了什么" data-astro-cid-wy3xnbws>LZ4Inv 到底改了什么</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#块目录里的整数混淆" data-astro-cid-wy3xnbws>块目录里的整数混淆</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#四个独立约束同时闭合" data-astro-cid-wy3xnbws>四个独立约束同时闭合</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#让每一层能独立失败" data-astro-cid-wy3xnbws>让每一层能独立失败</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#三级验收把能解变成稳定" data-astro-cid-wy3xnbws>三级验收：把”能解”变成”稳定”</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#失败记录及其信息增量" data-astro-cid-wy3xnbws>失败记录及其信息增量</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#复盘可迁移的部分" data-astro-cid-wy3xnbws>复盘：可迁移的部分</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#附录关键地址与常量索引" data-astro-cid-wy3xnbws>附录：关键地址与常量索引</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#gameassemblydll" data-astro-cid-wy3xnbws>GameAssembly.dll</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#unityplayerdll" data-astro-cid-wy3xnbws>UnityPlayer.dll</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#外层-vfs" data-astro-cid-wy3xnbws>外层 VFS</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#内层归档" data-astro-cid-wy3xnbws>内层归档</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+</a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <p>终末地的资源读不出来，但读不出来的方式很奇怪。</p>
+<p><code>.blc</code> 索引解密后是一份结构完整的 VFS 清单，文件路径、偏移、长度、MD5、<code>encrypted</code> 全都在。按索引里的偏移从 <code>.chk</code> 容器切出一个 <code>.ab</code>，逐字节比对 MD5 —— 对上了。文件记录标的是 <code>encrypted=false</code>，也就是说这个文件根本没经过文件级加密。然后把它交给 UnityPy：不报容器异常，枚举出的对象数是 <code>0</code>。</p>
+<p>校验通过、提取范围正确、标记未加密、解析结果为空。这四件事必须同时成立，才是这套资源的真实形态。</p>
+<p>本文记录的是从这个矛盾推到”1048 个包、19,370 个对象、解包错误 0”的过程——判据是怎么定的、哪些假设是怎么被否证的、失败点各自贡献了什么信息、以及算法体落进虚拟化节之后推进方式发生了什么变化。结论列在下一节，正文是过程。</p>
+<h2 id="先说结论">先说结论<a class="anchor" href="#先说结论"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<ul>
+<li>保护层是两个。VFS 文件层的 ChaCha20 与 AssetBundle 归档层彼此独立，<code>encrypted=false</code> 只关闭前者。</li>
+<li>外层归 <code>GameAssembly.dll</code> 的托管 VFS 代码，公共 key、nonce 构造与 counter 都有直接指令证据。</li>
+<li>内层归定制 UnityPlayer 的归档路径，实现体在 PE 的 <code>.tvm0</code> 虚拟化节里，本轮没有做完整去虚拟化。</li>
+<li>内层由”候选实现 + 本机样本约束”逐层收敛：在当前语料中，稀疏 VFSAES、块目录标准 LZ4、数据块 LZ4Inv 方言与整数混淆逆变换是唯一通过全部判据的兼容候选；这不等同于 <code>.tvm0</code> 的逐指令恢复。</li>
+<li>验收半径分三级：最小样本 → <code>InitBundle</code> 全组 1048 包 → 数十 MB 的 Shader 包。全程解包错误 0。</li>
+<li>客户端 Unity 版本 <code>2021.3.34f5</code>。</li>
+</ul>
+<hr>
+<h2 id="第一个判断先数保护层不要先猜算法">第一个判断：先数保护层，不要先猜算法<a class="anchor" href="#第一个判断先数保护层不要先猜算法"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>面对”读不出来”的第一反应通常是猜算法：文件头不是 <code>UnityFS</code>，那就是整文件加密了，找 key 去。这个反应在这里会直接走死。</p>
+<p>因为矛盾本身已经给出了信息：<strong>MD5 对上了</strong>。索引里记录的 MD5 是按解密后的文件内容算的，我按 <code>encrypted=false</code> 原样读出来的字节能匹配这个 MD5，说明我读到的东西正是客户端拿到的东西。如果整个文件被一层我不知道的密码保护着，我不可能同时满足”字节和记录一致”和”内容不可解析”。</p>
+<p>所以真正的问题不是”key 是什么”，而是”这个字节流在进入 Unity 之前还要经过谁”。这是一个层次问题。层次数搞错，后面所有努力都会归因到错误的地方——最常见的错法是把非标准头归因成提取偏移不对，然后花几天调偏移。</p>
+<p>要回答层次问题，先得把”我自己弄错了”这个可能性彻底排掉。</p>
+<h3 id="用最小样本把自己的错误排除掉">用最小样本把自己的错误排除掉<a class="anchor" href="#用最小样本把自己的错误排除掉"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<p>我从 <code>InitBundle</code> 里挑了整个组里最小的一个文件：</p>
+<div class="expressive-code"><link rel="stylesheet" href="/blog/astro/ec.iz9dg.css"><script type="module" src="/blog/astro/ec.0vx5m.js"></script><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">虚拟路径：Data/Bundles/Windows/initial/9f92bbd1e0f2191cffd3be18.ab</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">VFS encrypted：false</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">VFS length：2461</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">VFS MD5：14BE22E5359786EBF73432884EEAF923</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">原始 SHA-256：6415598d07bf26090f3ae631d4746f19cb4608c33fce39b93a89fa24903dfcff</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="虚拟路径：Data/Bundles/Windows/initial/9f92bbd1e0f2191cffd3be18.abVFS encrypted：falseVFS length：2461VFS MD5：14BE22E5359786EBF73432884EEAF923原始 SHA-256：6415598d07bf26090f3ae631d4746f19cb4608c33fce39b93a89fa24903dfcff"><div></div></button></div></figure></div>
+<p>挑最小的有三个理由，每个都在后面兑现了：</p>
+<ol>
+<li>它只有一个压缩块和两个 node，任何偏移或长度理解错误都会立刻破坏文件尾闭合，不会”看着像对的”。</li>
+<li>2461 字节可以整个 dump 出来手算，不需要工具正确才能观察。</li>
+<li>后面每次改动实现，重跑成本接近零。</li>
+</ol>
+<p>按 <code>.chk</code> 偏移切出来的 2461 字节与 VFS 接口读取结果逐字节一致，MD5 与记录一致。<strong>提取范围没错，这条排除掉了。</strong> 前 32 字节是：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">40 19 9A FE 5A 50 CC 1A DD 0C 00 5F 0D 4A 00 5F</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">0D 42 84 5D 1E 05 A7 AB 9C 19 ED B2 5A 0F C1 50</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="40 19 9A FE 5A 50 CC 1A DD 0C 00 5F 0D 4A 00 5F0D 42 84 5D 1E 05 A7 AB 9C 19 ED B2 5A 0F C1 50"><div></div></button></div></figure></div>
+<p>到这里可以下第一个结论了：<code>encrypted</code> 这个字段管的是 VFS 文件记录层的加密开关，与 <code>.ab</code> 内部是什么形态无关。两层，独立。</p>
+<svg id="svg-endfield-two-layers" viewBox="0 0 720 430" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto" role="img" aria-label="终末地资源的两层保护结构">
+  <style>
+    #svg-endfield-two-layers .b{fill:none;stroke:currentColor;stroke-width:1.5}
+    #svg-endfield-two-layers .br{fill:none;stroke:currentColor;stroke-width:1.2;opacity:0.7}
+    #svg-endfield-two-layers .t{fill:currentColor;font-family:sans-serif;font-size:12.5px}
+    #svg-endfield-two-layers .s{fill:currentColor;font-family:sans-serif;font-size:10.5px;opacity:0.82}
+    #svg-endfield-two-layers .arw{stroke:currentColor;stroke-width:1.4;fill:none;marker-end:url(#a27)}
+  </style>
+  <defs>
+    <marker id="a27" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L7,3 L0,6 Z" fill="currentColor"></path>
+    </marker>
+  </defs>
+  <path class="br" d="M198 16 L188 16 L188 116 L198 116"></path>
+  <text class="t" x="16" y="58">层 A：托管 VFS 文件层</text>
+  <text class="s" x="16" y="78">GameAssembly.dll</text>
+  <text class="t" x="16" y="150">跨模块边界</text>
+  <text class="s" x="16" y="170">jmp rax 之后</text>
+  <path class="br" d="M198 190 L188 190 L188 348 L198 348"></path>
+  <text class="t" x="16" y="262">层 B：定制归档层</text>
+  <text class="s" x="16" y="282">UnityPlayer.dll .tvm0</text>
+  <rect class="b" x="206" y="16" width="494" height="42"></rect>
+  <text class="t" x="220" y="36">.blc 索引</text>
+  <text class="s" x="220" y="52">ChaCha20(公共 key, nonce = &#x3C;3 | seed>, counter 1) → VFBlockMainInfo</text>
+  <rect class="b" x="206" y="74" width="494" height="42"></rect>
+  <text class="t" x="220" y="94">.chk 文件记录</text>
+  <text class="s" x="220" y="110">offset / length / MD5 / encrypted / ivSeed，加密项按记录 nonce 再解一次</text>
+  <rect class="b" x="206" y="132" width="494" height="42"></rect>
+  <text class="t" x="220" y="152">.ab 字节流</text>
+  <text class="s" x="220" y="168">MD5 与记录一致，但头部不是 UnityFS，UnityPy 得到 0 个对象</text>
+  <rect class="b" x="206" y="190" width="494" height="42"></rect>
+  <text class="t" x="220" y="210">自定义 Bundle 头</text>
+  <text class="s" x="220" y="226">8 字节识别式 · 40/48 字节大端字段 · 混淆 size 不等于物理长度</text>
+  <rect class="b" x="206" y="248" width="494" height="42"></rect>
+  <text class="t" x="220" y="268">块目录</text>
+  <text class="s" x="220" y="284">稀疏 VFSAES → 标准 LZ4 → 计数/尺寸/flag/offset 整数混淆逆变换</text>
+  <rect class="b" x="206" y="306" width="494" height="42"></rect>
+  <text class="t" x="220" y="326">数据块</text>
+  <text class="s" x="220" y="342">稀疏 VFSAES → LZ4Inv 方言</text>
+  <rect class="b" x="206" y="364" width="494" height="42"></rect>
+  <text class="t" x="220" y="384">SerializedFile + .resS</text>
+  <text class="s" x="220" y="400">重封装成标准 UnityFS\0，交给通用解析器</text>
+  <path class="arw" d="M452 60 L452 70"></path>
+  <path class="arw" d="M452 118 L452 128"></path>
+  <path class="arw" d="M452 176 L452 186"></path>
+  <path class="arw" d="M452 234 L452 244"></path>
+  <path class="arw" d="M452 292 L452 302"></path>
+  <path class="arw" d="M452 350 L452 360"></path>
+</svg>
+<hr>
+<h2 id="判据先于方法什么才算解对了">判据先于方法：什么才算”解对了”<a class="anchor" href="#判据先于方法什么才算解对了"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>这是整个过程里最该先想清楚的一件事，也是这类分析最容易糊过去的一件事。</p>
+<p>试错法的问题不在于试，而在于<strong>判据太弱</strong>。如果判据是”解出来的内容里有可读字符串”，那么错误的 key、错误的处理顺序、甚至错误的密码算法都有相当概率蒙过去——尤其是稀疏加密这种只改动一小部分字节的方案，大面积原文本来就是可读的。一旦弱判据放过了一个错误分支，后面所有推理都建立在它上面，而且症状会出现在很远的地方。</p>
+<p>所以在动手之前，我先把这套资源里所有能当判据的结构性约束列出来，按强度排序：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>判据</th><th>来源</th><th>为什么强</th></tr></thead><tbody><tr><td>CRC32 / MD5 / SHA-256</td><td><code>.blc</code> 尾部 CRC、文件记录 MD5</td><td>错误 key、错误 counter、错误算法实现同时通过的概率可忽略</td></tr><tr><td>严格解压长度</td><td>块目录声明的 <code>uncompressedSize</code></td><td>解压器必须恰好产出该长度，多一字节少一字节都算失败</td></tr><tr><td>物理区间闭合</td><td><code>dataOffset + compressedSize == 文件长度</code></td><td>与头字段的理解直接挂钩，错一个字段就不闭合</td></tr><tr><td>node 覆盖</td><td>所有 node 的 <code>offset + size</code> 恰好铺满解压数据</td><td>与块目录的整数混淆公式挂钩</td></tr><tr><td>尾部无剩余</td><td>索引/块目录解析后必须恰好读完</td><td>结构理解错误会留下残字节</td></tr><tr><td>语义可解析</td><td>UnityPy 枚举对象、Shader 内部 entry table</td><td>最后一道，验证字节完整性而非仅结构合法</td></tr><tr><td>可读字符串</td><td>——</td><td>不作为判据</td></tr></tbody></table>
+<p>后面每一步的成立与否，都只用这张表里的东西判。这个约定带来的直接好处是：<strong>失败会失败在一个具体的位置上，而位置本身携带信息。</strong> 后文出现的 <code>invalid match distance 26037</code>、<code>distance 22</code>、<code>distance 34048</code> 三个数字，都是因为判据够强才浮出来的，它们各自否掉了一条处理顺序。</p>
+<hr>
+<h2 id="外层沿入口收敛而不是全局搜关键词">外层：沿入口收敛，而不是全局搜关键词<a class="anchor" href="#外层沿入口收敛而不是全局搜关键词"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>外层是有源码级信息的那一层，所以推进方式和内层完全不同：这里可以顺着调用链走。</p>
+<h3 id="入口表从类型和方法名建不从字符串建">入口表从类型和方法名建，不从字符串建<a class="anchor" href="#入口表从类型和方法名建不从字符串建"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<p>IL2CPP 的 <code>dump.cs</code> 提供了完整的类型、方法名和 RVA。我按 VFS 相关类型名把入口表建出来：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>方法</th><th align="right">RVA</th><th>作用</th></tr></thead><tbody><tr><td><code>VirtualFileSystem.CreateFromStreamAssetFile</code></td><td align="right"><code>0x30762C0</code></td><td>读取 StreamingAssets 里的 VFS 索引</td></tr><tr><td><code>VFSUtils.DecryptCreateBlockGroupInfo</code></td><td align="right"><code>0x30769C0</code></td><td>解密索引并创建 <code>VFBlockMainInfo</code></td></tr><tr><td><code>VirtualFileSystem.GetAssetBytes</code></td><td align="right"><code>0x2F23370</code></td><td>按文件记录读取并可选解密</td></tr><tr><td><code>VirtualFileSystem.GetCommonChachaKeyBs</code></td><td align="right"><code>0x2F7D740</code></td><td>生成公共 key</td></tr><tr><td><code>XXE1::.ctor</code></td><td align="right"><code>0x2F225D0</code></td><td>接受 key、nonce、counter</td></tr><tr><td><code>XXE1::WorkBytes</code></td><td align="right"><code>0x2EFF3D0</code></td><td>生成流并异或输入</td></tr><tr><td><code>XXE1::QuarterRound</code></td><td align="right"><code>0x2EFF4E0</code></td><td>ChaCha quarter round</td></tr></tbody></table>
+<p><code>XXE1</code> 这个类名毫无信息量，但它的成员有：32 字节 key、12 字节 nonce、16 个 <code>uint32</code> 的 state、<code>sigma</code>/<code>tau</code> 常量、64 字节工作块，加一个 <code>QuarterRound</code>。这套结构只对应一个东西。<code>WorkBytes</code> 的轮结构确认了它就是标准 ChaCha20，所以工具里没有把 <code>XXE1</code> 当私有密码去黑盒处理，而是直接写了一份独立的纯 Python ChaCha20，并额外拿 PyCryptodome 做第二实现对照——两个独立实现在同一 (key, nonce, counter) 下输出逐字节相同，这一步排掉的是”我的密码实现本身有 bug”。</p>
+<h3 id="一条被调用图否掉的路线">一条被调用图否掉的路线<a class="anchor" href="#一条被调用图否掉的路线"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<p>进入正题之前先记一次失败，因为它决定了后面所有工作的输入是什么。</p>
+<p>StreamingAssets 里有个 <code>index_main.json</code>，内容是 Base64。看起来非常像资源清单入口，我一开始就是从它开始的。但把 <code>CreateFromStreamAssetFile</code> 的调用图画出来之后：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">CreateFromStreamAssetFile</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> GetVFSBlockHashPath</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> ReadStreamAssetFileAllBytes</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> DecryptCreateBlockGroupInfo</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">     </span></span><span style="--0:#e1e4e8;--1:#24292e">-> XXE1::.ctor</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">     </span></span><span style="--0:#e1e4e8;--1:#24292e">-> XXE1::TransformBytes</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">     </span></span><span style="--0:#e1e4e8;--1:#24292e">-> VFBlockMainInfo.ReadFromByteBuf</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="CreateFromStreamAssetFile  -> GetVFSBlockHashPath  -> ReadStreamAssetFileAllBytes  -> DecryptCreateBlockGroupInfo     -> XXE1::.ctor     -> XXE1::TransformBytes     -> VFBlockMainInfo.ReadFromByteBuf"><div></div></button></div></figure></div>
+<p>真实索引来自 <code>GetVFSBlockHashPath</code> 算出来的哈希路径下的 <code>.blc</code>，与 <code>index_main.json</code> 无关，后者属于另一条清单链。<strong>调用图否掉了一个”看起来对”的入口。</strong> 这类否证的价值在于它是廉价的：画调用图的成本远低于对着错误输入调密码参数。</p>
+<h3 id="key-是从指令语义读出来的">key 是从指令语义读出来的<a class="anchor" href="#key-是从指令语义读出来的"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<p><code>GetCommonChachaKeyBs</code> 的反汇编显示它先拼 5 段字符串、Base64 解码，再调用 <code>Beyond.Security.IOOO000iiI::IooiIIO</code>。继续进内层函数 <code>_IIiiIIIoO</code>（RVA <code>0x2F800B0</code>），关键循环只有三行语义：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">keyIndex = index % keyLength</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">output[index] = cipher[index] - key[keyIndex]</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="keyIndex = index % keyLengthoutput[index] = cipher[index] - key[keyIndex]"><div></div></button></div></figure></div>
+<p>对应的指令是从 key 与 cipher 各取一个无符号字节、<code>sub eax, ecx</code>、写回低 8 位。这里要强调的是 <code>sub</code> 不是可以随便替换的：加法、异或、减法在这类”逐字节混淆”里经常被当成同一类操作糊过去，但它们给出三个不同的 key。指令写的是减法，那就是减法。</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">Base64：Ks6k3zhrV5gCnBfZVqAgLqzl3BC/08Dagi4BZzU9xUY=</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">unlock：Assets/Beyond/DynamicAssets/</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">公共 key：E95B317AC4F828569D23A86BF271DCB53E846FA75C924D671DBA8E38F4CA52E1</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="Base64：Ks6k3zhrV5gCnBfZVqAgLqzl3BC/08Dagi4BZzU9xUY=unlock：Assets/Beyond/DynamicAssets/公共 key：E95B317AC4F828569D23A86BF271DCB53E846FA75C924D671DBA8E38F4CA52E1"><div></div></button></div></figure></div>
+<h3 id="counter-不靠默认值">counter 不靠默认值<a class="anchor" href="#counter-不靠默认值"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<p>ChaCha20 的初始 counter 是 0 还是 1，是个协议参数，不同库的默认值不一样。这种地方最容易顺手填一个默认值然后一路错下去。</p>
+<p>不用猜：<code>DecryptCreateBlockGroupInfo</code> 在构造 <code>XXE1</code> 之前，<code>0x3076C52</code> 处是 <code>mov r9d, 1</code>，紧接着 <code>0x3076C62</code> 调用构造函数。第四个整型参数就是 counter，值是 <code>1</code>。</p>
+<h3 id="排除矩阵只测成功组合等于没测">排除矩阵：只测成功组合等于没测<a class="anchor" href="#排除矩阵只测成功组合等于没测"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<p>到这里 key 和 counter 都有直接证据了，按理可以直接跑。但我还是把矩阵完整跑了一遍——不是为了找到能用的那一个，而是为了确认<strong>其他组合都会失败</strong>。</p>
+<p>对 <code>0CE8FA57.blc</code> 的 4×3 矩阵，判据是尾部 CRC32：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>key 变换</th><th>counter 0</th><th>counter 1</th><th>counter 2</th></tr></thead><tbody><tr><td>Base64 原始字节</td><td>CRC32 失败</td><td>CRC32 失败</td><td>CRC32 失败</td></tr><tr><td>逐字节加 unlock</td><td>CRC32 失败</td><td>CRC32 失败</td><td>CRC32 失败</td></tr><tr><td>逐字节 XOR unlock</td><td>CRC32 失败</td><td>CRC32 失败</td><td>CRC32 失败</td></tr><tr><td>逐字节减 unlock</td><td>CRC32 失败</td><td><strong>成功</strong></td><td>CRC32 失败</td></tr></tbody></table>
+<p>12 格里 11 格失败、1 格成功，这个形状本身才是证据。它说明的不只是”减法 + counter 1 能解”，还说明：key 变换不是可互换的混淆（加/异或都不行），counter 不是库默认差异（0 和 2 都不行）。如果只跑对角线上那一格，我拿到的是一个能用的实现，不是一个被证明的实现——两者的区别会在下一个版本、下一个资源组、下一个游戏上暴露出来。</p>
+<p>成功项解析出组名 <code>InitBundle</code>，存储 CRC32 与计算值同为 <code>2FD48B5F</code>，解密结果 SHA-256 为 <code>a788fbd3ded1a5ec1ca90f44edb9e44b742481fe0e6a36618d96052dd1fc4fe8</code>。</p>
+<hr>
+<h2 id="扩大半径从能解一个到能解全部">扩大半径：从”能解一个”到”能解全部”<a class="anchor" href="#扩大半径从能解一个到能解全部"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>单个索引解开之后有个很强的诱惑：直接去啃第二层。但这时候实现里至少还藏着两类未验证假设——可选字段的处理，和长载荷的处理。这两类问题在小样本上永远不会暴露。</p>
+<p><code>.blc</code> 的前 12 字节不参与载荷 CRC，布局是小端 <code>&#x3C;uint32 protocol=3>&#x3C;uint64 nonce></code>，ChaCha20 从偏移 <code>12</code> 开始。解密后按固定顺序解析，每一项都带严格校验：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">codeVersion</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">version</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">groupName / groupHash</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">declaredFileCount</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">groupChunksLength / blockType / chunkCount</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">chunks[] / files[]</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">optional buildTime / buildNote</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">8</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">CRC32</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="codeVersionversiongroupName / groupHashdeclaredFileCountgroupChunksLength / blockType / chunkCountchunks[] / files[]optional buildTime / buildNoteCRC32"><div></div></button></div></figure></div>
+<p>17 个 StreamingAssets 索引全部通过 CRC32、文件计数一致、尾部无剩余三项检查：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>组</th><th align="right">文件数</th></tr></thead><tbody><tr><td><code>Bundle</code></td><td align="right">236,746</td></tr><tr><td><code>Terrain</code></td><td align="right">65,258</td></tr><tr><td><code>Streaming</code></td><td align="right">51,095</td></tr><tr><td><code>JsonData</code></td><td align="right">89,959</td></tr><tr><td><code>InitBundle</code></td><td align="right">1,048</td></tr></tbody></table>
+<p>顺手记一个容易合并出错的地方：这些索引的 <code>codeVersion</code> 是 <code>4</code>，而另一个独立的 <code>version</code> 字段是 <code>22097503</code>。两个字段并列存在，不能合成”version 4”一句话带过。</p>
+<p>文件级加密走同一把公共 key，nonce 用记录里的 <code>ivSeed</code> 重新构造：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">nonce = pack_little_endian(&#x3C;uint32 3>&#x3C;uint64 ivSeed>)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">plaintext = ChaCha20(commonKey, nonce, counter = 1) XOR ciphertext</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="nonce = pack_little_endian(<uint32 3><uint64 ivSeed>)plaintext = ChaCha20(commonKey, nonce, counter = 1) XOR ciphertext"><div></div></button></div></figure></div>
+<p>为了压掉”只对短索引有效”这个可能，我特意找了一个几十 MB 的加密文件来跑：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">索引：1CDDBF1F.blc          组：BundleManifest</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">路径：Data/Bundles/Windows/manifest.hgmmap</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">密文长度：46,497,641        encrypted：true</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">ivSeed：285540354           nonce：030000000200051100000000</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code">
+</div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">明文 MD5：F38E756A02A85B3EDDC7711B4C9AF654</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">Brotli 展开长度：137,816,398</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="索引：1CDDBF1F.blc          组：BundleManifest路径：Data/Bundles/Windows/manifest.hgmmap密文长度：46,497,641        encrypted：trueivSeed：285540354           nonce：030000000200051100000000明文 MD5：F38E756A02A85B3EDDC7711B4C9AF654Brotli 展开长度：137,816,398"><div></div></button></div></figure></div>
+<p>MD5 与记录一致，而且展开后还能被 Brotli 正确消费——后者是一个额外的独立判据：如果解密有任何一个字节错位，Brotli 会在流中失败。外层到此闭合。</p>
+<hr>
+<h2 id="第二层先定所有权再谈算法">第二层：先定所有权，再谈算法<a class="anchor" href="#第二层先定所有权再谈算法"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>现在回到那个 2461 字节的样本。它的头是 <code>40 19 9A FE ...</code>，不是 <code>UnityFS</code>。问题是：<strong>是谁把它变成这样的？</strong></p>
+<p>这个问题必须先回答，因为它决定接下来去哪里找代码。如果改写发生在托管层，我可以继续读 <code>dump.cs</code>；如果发生在引擎层，托管层再怎么翻也翻不出来。</p>
+<h3 id="用否证走到跨模块边界">用否证走到跨模块边界<a class="anchor" href="#用否证走到跨模块边界"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<p>托管侧的资源加载入口是 <code>Beyond.VFS.UnityFileLoaderHelper::ReadAssetBundle</code>（RVA <code>0x3BB2FF0</code>）。顺着走：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">ReadAssetBundle                                GameAssembly + 0x3BB2FF0</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> ReadStreamAssetBundle                     GameAssembly + 0x3BB30B0</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> AssetBundle.LoadFromFile(path, crc, offset)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> LoadFromFile_Internal                     GameAssembly + 0x3BB36F0</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> il2cpp_codegen_resolve_icall 语义的 sub_59FC0</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> UnityPlayer.dll 中注册的 native 实现</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> 定制归档入口                                UnityPlayer + 0x672300</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="ReadAssetBundle                                GameAssembly + 0x3BB2FF0  -> ReadStreamAssetBundle                     GameAssembly + 0x3BB30B0  -> AssetBundle.LoadFromFile(path, crc, offset)  -> LoadFromFile_Internal                     GameAssembly + 0x3BB36F0  -> il2cpp_codegen_resolve_icall 语义的 sub_59FC0  -> UnityPlayer.dll 中注册的 native 实现  -> 定制归档入口                                UnityPlayer + 0x672300"><div></div></button></div></figure></div>
+<p><code>ReadAssetBundle</code> 的分支只决定选哪条文件路径，然后把 <code>dir/fileName/offset/crc</code> 交给 <code>ReadStreamAssetBundle</code>；后者组路径、传 <code>crc</code> 和 <code>offset</code>，直接进 <code>AssetBundle.LoadFromFile</code>。<strong>整条链上没有任何一处把 <code>.ab</code> 改写成标准 UnityFS 的托管代码。</strong></p>
+<p><code>LoadFromFile_Internal</code> 是 IL2CPP 生成的 native 包装，行为是固定套路：先从全局槽取缓存的函数指针，槽为空时加载字符串</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">UnityEngine.AssetBundle::LoadFromFile_Internal(System.String,System.UInt32,System.UInt64)</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="UnityEngine.AssetBundle::LoadFromFile_Internal(System.String,System.UInt32,System.UInt64)"><div></div></button></div></figure></div>
+<p>调 <code>sub_59FC0</code> 解析 internal call，把结果写回槽，最后 <code>jmp rax</code>。该字符串的两处关键引用在 <code>0x3BB36CC</code> 和 <code>0x3BB373D</code>。</p>
+<p>跨模块边界就在这个 <code>jmp rax</code> 之后。这一节的产出不是一个算法，而是一句”<strong>别在托管层继续找了</strong>”。这种否证式的结论在实际工作里的价值经常高于正面发现：它关掉了一整个搜索空间。</p>
+<h3 id="tvm0四类证据叠加不看节名"><code>.tvm0</code>：四类证据叠加，不看节名<a class="anchor" href="#tvm0四类证据叠加不看节名"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<p>进 <code>UnityPlayer.dll</code> 之后，归档头读取函数在 <code>0x674090</code>。它的第一条指令是跳转到 <code>0x23CBC05</code>。</p>
+<p>看到一个独立命名的 PE 节就断言”这是虚拟化”是不够的——节名可以是任何东西。我要的是四类彼此独立的证据同时指向同一结论：</p>
+<ul>
+<li><strong>节布局独立</strong>：PE 节表里确实有 <code>.tvm0</code>，RVA <code>0x23C6000</code>，虚拟大小 <code>0x17FFEA</code>，原始数据区 <code>0x22C9200 + 0x17B000</code>。它与普通 <code>.text</code> 的布局和代码归属是分开的。</li>
+<li><strong>实现整体转交</strong>：<code>0x674090</code> 第一条指令就跳进 <code>0x23CBC05</code>。这不是编译器常见的尾调用形态，而是把整个函数实现交出去。</li>
+<li><strong>错误路径同归属</strong>：归档失败字符串 <code>Failed to Decrypt data when creating archive '%s'!</code> 在文件偏移 <code>0x1D8ACC8</code>、RVA <code>0x1D8C0C8</code>，唯一的 RIP-relative 引用落在 <code>0x23CD155</code>，同样在 <code>.tvm0</code> 内。</li>
+<li><strong>控制流形态</strong>：入口附近能看到寄存器取反、交换、临时压栈、运行时拼接跳转目标再 <code>jmp reg</code>。从 <code>0x23CBC20</code> 往后线性解码很快撞到 <code>sti</code>、浮点指令和越界跳转目标。这是 VM 调度/解释路径的特征，不是按普通函数边界能恢复 CFG 的字节流。</li>
+</ul>
+<p>四条叠起来，可以确定的是：<strong>定制归档逻辑归属于 <code>.tvm0</code>，入口和错误路径都经过它。</strong> 可以确定的仅此而已——VM handler 表、虚拟寄存器布局、字节码格式，本轮一个都没有恢复。</p>
+<p>顺带记一个假线索。我在 UnityPlayer 里搜到过 <code>PROTECTED</code> 字符串，一度当成归档保护标志。查交叉引用发现它属于 Vulkan 的 memory-property 枚举。字符串命中永远要配调用上下文看，单独的命中不是证据。</p>
+<hr>
+<h2 id="推进方式切换为兼容复现">推进方式切换为兼容复现<a class="anchor" href="#推进方式切换为兼容复现"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>这是整个分析里我认为最值得单独讲的一段。</p>
+<p>面对一个虚拟化过的算法体，通常有两条路：一条是去虚拟化——恢复 dispatcher、虚拟栈与寄存器、handler 表、字节码语义，然后用动态轨迹逐条对照静态语义；另一条是不解释内部程序，改为<strong>在输入输出空间里验证候选兼容实现</strong>。</p>
+<p>选哪条取决于目标。我的目标是恢复资源，也就是构造一个与客户端在同一批输入上行为一致的兼容实现。这个目标不要求复刻 VM 的调度器，只要求声明语料内的输出一致。分析问题因此从”恢复内部指令语义”收窄为”用足够多、彼此独立的约束验证候选行为”。</p>
+<p>于是推进方式换成四件事的组合：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>层次</th><th>手上有什么</th><th>对收敛的作用</th></tr></thead><tbody><tr><td>调用边界</td><td><code>ReadAssetBundle → LoadFromFile_Internal → UnityPlayer</code></td><td>确认谁负责读文件，关掉托管层搜索空间</td></tr><tr><td>外层协议</td><td><code>protocol=3</code>、12 字节 nonce、公共 key、counter <code>1</code></td><td>有直接指令证据，完全不依赖 <code>.tvm0</code></td></tr><tr><td>识别式与物理布局</td><td>正式版头部两个大端字段、40/48 字节头</td><td>用最小样本锁定头长度和数据区间</td></tr><tr><td>候选算法</td><td>稀疏抽取、自定义 SBox AES、字段变换、LZ4 方言</td><td>作为<strong>可执行假设</strong>输入，不当成客户端结论</td></tr><tr><td>样本约束</td><td>稀疏差分位置、解压失败距离、node/文件尾闭合</td><td>排除 key、稀疏规律、处理顺序、距离端序、压缩方言的错误组合</td></tr><tr><td>全量验收</td><td>17 索引、1048 包、19,370 对象</td><td>把”某个样本能解”升级为”当前正式版资源集上稳定”</td></tr></tbody></table>
+<p>第四行需要说清楚来源：内层的几个常量与字段变换公式，我不是从 <code>.tvm0</code> 逐指令恢复的，而是先从公开兼容实现（<a href="https://github.com/Escartem/AnimeStudio">Escartem/AnimeStudio</a>）取到候选形态，再拿本机正式版样本一层层验。这一点必须写明白，否则整篇文章的证据等级就是假的。</p>
+<p>也正因为如此，本文关心的不是那些常量本身，而是<strong>怎么把一个候选算法压成本机事实</strong>：一个候选实现摆在面前，你如何设计实验让它在错的时候必须以可观察的方式错？下面五节都在回答这个问题。</p>
+<p>所以”分析完了”的准确含义是：外层有直接证据，内层由候选实现经样本约束逐层闭合，输出能被通用解析器和全量对象扫描消费。它不等于”<code>.tvm0</code> 已经被翻译成 C++“。要声称完整去虚拟化，得另做一轮完全不同的工作。</p>
+<hr>
+<h2 id="用样本反推格式让约束替我做判断">用样本反推格式：让约束替我做判断<a class="anchor" href="#用样本反推格式让约束替我做判断"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<h3 id="识别式先确认样本属于哪一族">识别式：先确认样本属于哪一族<a class="anchor" href="#识别式先确认样本属于哪一族"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<p>正式版头的前两个大端 <code>uint32</code> 记为 <code>a</code>、<code>b</code>，识别关系是：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">x = a XOR 0x4A92F0CD</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">c1 = (4 * x) AND 0xFFFF0000</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">c2 = ROR32(x, 14)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">expected = c1 XOR c2 XOR 0xD8B1E637</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">valid = (b == expected)</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="x = a XOR 0x4A92F0CDc1 = (4 * x) AND 0xFFFF0000c2 = ROR32(x, 14)expected = c1 XOR c2 XOR 0xD8B1E637valid = (b == expected)"><div></div></button></div></figure></div>
+<p>我的样本通过正式版识别式，不通过另一个候选的 CB3 识别式。这一步的意义是分族：确认后面该用哪一组字段布局，避免把两个版本的格式混着调。</p>
+<p>顺便，这也解释了为什么”全局搜 <code>UnityFS</code> 魔数”这条路一开始就不成立——头已经被整体替换，没有魔数可搜，只能靠识别式加物理布局。</p>
+<h3 id="头字段物理文件尾是第一个强约束">头字段：物理文件尾是第一个强约束<a class="anchor" href="#头字段物理文件尾是第一个强约束"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<p>按大端读 40/48 字节候选头，得到：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">encodingFlags = 8</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">headerSize = 48</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">compressedBlocksInfoSize = 101      (0x65)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">uncompressedBlocksInfoSize = 137    (0x89)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">flags = 0x243</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">blocksInfo 区间 = [0x30, 0x95)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">dataOffset = align16(0x95) = 0xA0</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="encodingFlags = 8headerSize = 48compressedBlocksInfoSize = 101      (0x65)uncompressedBlocksInfoSize = 137    (0x89)flags = 0x243blocksInfo 区间 = [0x30, 0x95)dataOffset = align16(0x95) = 0xA0"><div></div></button></div></figure></div>
+<p><code>flags &#x26; 0x200</code> 要求块目录之后按 16 字节对齐，所以 <code>0x30 + 0x65 = 0x95</code> 对齐到 <code>0xA0</code>。</p>
+<p>这里第一个强约束就位了：后面那个压缩块的长度必须让 <code>dataOffset + compressedSize</code> 正好等于 2461。这个等式把”头字段理解正确”和”块尺寸理解正确”绑在了一起，任何一边错，等式都不成立。选最小样本的第一个理由在这里兑现——如果换个有 30 个块的包，某个块的尺寸算错了，总长仍可能凑巧落在文件内，等式就没有鉴别力了。</p>
+<h3 id="一个字段与它的名字不符不要替它圆场">一个字段与它的名字不符，不要替它圆场<a class="anchor" href="#一个字段与它的名字不符不要替它圆场"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<p>头里有个混淆的 <code>size</code> 字段。按候选公式解出来是 <code>0xE370CDAAE370C437</code>；就算截成 32 位也只是 <code>0xE370C437</code>。样本物理长度是 2461。</p>
+<p>这时候有两种处理。一种是认为自己解错了，继续调公式直到它等于 2461；另一种是接受这个字段在这批资源上就不承载物理长度，把边界约束建立在别处。</p>
+<p>我选第二种，理由是别处的约束已经自洽了：物理长度来自输入流本身，块目录区间必须落在输入流内，每个压缩块必须落在输入流内，解压总长必须覆盖所有 node 的 <code>offset + size</code>。这四条已经把边界锁死，不需要 <code>size</code> 参与。反过来，如果强行让 <code>header.size == 文件长度</code> 成立，就会错误拒绝合法包——这条已经被本机样本直接否掉了。</p>
+<p>一个字段的名字不等于它的语义。让约束系统里的其他部分承担职责，比给一个不符的字段编解释要安全。</p>
+<hr>
+<h2 id="差分实验稀疏加密的判定">差分实验：稀疏加密的判定<a class="anchor" href="#差分实验稀疏加密的判定"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>把数据块拿出来看，现象很别扭：里面能看到大片像 Unity SerializedFile 的结构，类型树、路径、版本号都是可读的，但某些 token、长度或距离持续损坏。</p>
+<p>这个现象本身就能区分两个假设，只要想清楚每个假设预测什么：</p>
+<ul>
+<li><strong>假设 A：整块连续加密。</strong> 那么 2301 字节会整体变成随机字节，大面积可读内容不可能存在。</li>
+<li><strong>假设 B：稀疏加密。</strong> 只有少量位置被替换，其余原样。这与观察相符。</li>
+</ul>
+<p>假设 A 与观察直接冲突，排除。接下来要验的就不是”是不是稀疏”，而是”稀疏的选择规律是什么”——这是个可以精确预测再核对的问题。</p>
+<p>候选规律给出的预测是：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">blockCount = floor(2301 / 16) = 143</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">step = floor(256 / 143) = 1</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">选中位置 = 0, 16, 32, ... , 2272</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="blockCount = floor(2301 / 16) = 143step = floor(256 / 143) = 1选中位置 = 0, 16, 32, ... , 2272"><div></div></button></div></figure></div>
+<p>也就是说：只有每个 16 字节块的开头 1 个字节被处理，一共 143 处。跑一遍变换，做输入输出字节差分，实测结果是：</p>
+<ul>
+<li>实际发生变化的位置有 <strong>141</strong> 个；</li>
+<li>所有变化位置都满足 <code>offset % 16 == 0</code>；</li>
+<li>最后一个变化位置是 <strong>2272</strong>。</li>
+</ul>
+<p><code>offset % 16 == 0</code> 和末位 2272 与预测严格一致。但数量是 141，不是 143。</p>
+<p>这个差 2 值得停一下。诱惑是把实现改成”只选 141 个”去对上观察——那就彻底错了。差分集合记录的是”值发生了变化的位置”，不是”被处理的位置”：其中两处的输入字节恰好与解密后的字节相同，变换发生了但差分看不见。<strong>差分数量不是算法参数。</strong> 这类”用观测数据反向修正算法定义”的错误一旦犯下，会在别的包上立刻炸掉，而且现场离原因很远。</p>
+<svg id="svg-endfield-sparse" viewBox="0 0 720 270" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto" role="img" aria-label="稀疏 VFSAES 的抽取与散回">
+  <style>
+    #svg-endfield-sparse .b{fill:none;stroke:currentColor;stroke-width:1.4}
+    #svg-endfield-sparse .hit{fill:currentColor;opacity:0.5}
+    #svg-endfield-sparse .fill{fill:currentColor;opacity:0.07}
+    #svg-endfield-sparse .t{fill:currentColor;font-family:sans-serif;font-size:12px}
+    #svg-endfield-sparse .s{fill:currentColor;font-family:sans-serif;font-size:10.5px;opacity:0.82}
+    #svg-endfield-sparse .arw{stroke:currentColor;stroke-width:1.4;fill:none;marker-end:url(#a27s)}
+  </style>
+  <defs>
+    <marker id="a27s" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L7,3 L0,6 Z" fill="currentColor"></path>
+    </marker>
+  </defs>
+  <text class="t" x="20" y="20">数据块 2301 字节 · blockCount = floor(2301 / 16) = 143 · step = floor(256 / 143) = 1</text>
+  <rect class="b" x="20" y="34" width="46" height="30"></rect><rect class="hit" x="21" y="35" width="6" height="28"></rect>
+  <rect class="b" x="66" y="34" width="46" height="30"></rect><rect class="hit" x="67" y="35" width="6" height="28"></rect>
+  <rect class="b" x="112" y="34" width="46" height="30"></rect><rect class="hit" x="113" y="35" width="6" height="28"></rect>
+  <rect class="b" x="158" y="34" width="46" height="30"></rect><rect class="hit" x="159" y="35" width="6" height="28"></rect>
+  <rect class="b" x="204" y="34" width="46" height="30"></rect><rect class="hit" x="205" y="35" width="6" height="28"></rect>
+  <rect class="b" x="250" y="34" width="46" height="30"></rect><rect class="hit" x="251" y="35" width="6" height="28"></rect>
+  <rect class="b" x="296" y="34" width="46" height="30"></rect><rect class="hit" x="297" y="35" width="6" height="28"></rect>
+  <rect class="b" x="342" y="34" width="46" height="30"></rect><rect class="hit" x="343" y="35" width="6" height="28"></rect>
+  <rect class="b" x="388" y="34" width="46" height="30"></rect><rect class="hit" x="389" y="35" width="6" height="28"></rect>
+  <rect class="b" x="434" y="34" width="46" height="30"></rect><rect class="hit" x="435" y="35" width="6" height="28"></rect>
+  <text class="t" x="492" y="54">· · ·</text>
+  <rect class="b" x="540" y="34" width="46" height="30"></rect><rect class="hit" x="541" y="35" width="6" height="28"></rect>
+  <rect class="b" x="586" y="34" width="46" height="30"></rect>
+  <text class="s" x="20" y="80">0</text>
+  <text class="s" x="66" y="80">16</text>
+  <text class="s" x="112" y="80">32</text>
+  <text class="s" x="528" y="80">2272</text>
+  <text class="s" x="590" y="80">尾部 13 字节不成块</text>
+  <path class="arw" d="M300 86 L300 112"></path>
+  <text class="s" x="310" y="104">抽取每块开头的 step 字节</text>
+  <rect class="b" x="20" y="120" width="636" height="28"></rect>
+  <rect class="fill" x="21" y="121" width="354" height="26"></rect>
+  <text class="s" x="34" y="138">143 字节有效载荷</text>
+  <text class="s" x="390" y="138">尾部补零，临时缓冲固定 256 字节</text>
+  <path class="arw" d="M300 150 L300 172"></path>
+  <rect class="b" x="20" y="180" width="636" height="34"></rect>
+  <text class="t" x="34" y="202">VFSAES：自定义 SBox 的 AES-128 生成 keystream，逐块推进 IV，与输入异或</text>
+  <text class="s" x="20" y="238">结果按同一规律散回原位置。实测 141 处字节变化，全部满足 offset % 16 == 0，末位 2272。</text>
+  <text class="s" x="20" y="256">理论选中 143 处，两处输入字节与解密结果相同 —— 差分数量不是算法参数。</text>
+</svg>
+<p>块目录走的是同一入口的另一个分支：它只有 101 字节，<code>length &#x3C;= 256</code> 时直接对整个缓冲做流变换，不走抽取。数据块才走”抽取到 256 字节临时区 → 变换 → 散回”。同一个函数两个分支，这也是为什么两者后面接的解压器不一样——它们从一开始就是两条路。</p>
+<p>变换本体是一个 OFB 形状的构造：用自定义 SBox 的 AES-128 加密当前 IV 得到 keystream，与输入异或，然后由 keystream 推出下一块 IV。</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="python"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#F97583;--1:#BF3441">def</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#B392F0;--1:#6F42C1">next_iv</span><span style="--0:#E1E4E8;--1:#24292E">(stream, xor_key):</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">result </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">bytearray</span><span style="--0:#E1E4E8;--1:#24292E">(</span><span style="--0:#79B8FF;--1:#005CC5">16</span><span style="--0:#E1E4E8;--1:#24292E">)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">for</span><span style="--0:#E1E4E8;--1:#24292E"> index, value </span><span style="--0:#F97583;--1:#BF3441">in</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">enumerate</span><span style="--0:#E1E4E8;--1:#24292E">(stream):</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">        </span></span><span style="--0:#E1E4E8;--1:#24292E">key_byte </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> (xor_key </span><span style="--0:#F97583;--1:#BF3441">>></span><span style="--0:#E1E4E8;--1:#24292E"> (</span><span style="--0:#79B8FF;--1:#005CC5">8</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">*</span><span style="--0:#E1E4E8;--1:#24292E"> (index </span><span style="--0:#F97583;--1:#BF3441">&#x26;</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">7</span><span style="--0:#E1E4E8;--1:#24292E">))) </span><span style="--0:#F97583;--1:#BF3441">&#x26;</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">0x</span><span style="--0:#79B8FF;--1:#005CC5">FF</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">        </span></span><span style="--0:#E1E4E8;--1:#24292E">mixed </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> (value </span><span style="--0:#F97583;--1:#BF3441">^</span><span style="--0:#E1E4E8;--1:#24292E"> (</span><span style="--0:#79B8FF;--1:#005CC5">31</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">*</span><span style="--0:#E1E4E8;--1:#24292E"> index) </span><span style="--0:#F97583;--1:#BF3441">^</span><span style="--0:#E1E4E8;--1:#24292E"> key_byte) </span><span style="--0:#F97583;--1:#BF3441">&#x26;</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">0x</span><span style="--0:#79B8FF;--1:#005CC5">FF</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">        </span></span><span style="--0:#E1E4E8;--1:#24292E">rotated </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> ((mixed </span><span style="--0:#F97583;--1:#BF3441">>></span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">5</span><span style="--0:#E1E4E8;--1:#24292E">) </span><span style="--0:#F97583;--1:#BF3441">|</span><span style="--0:#E1E4E8;--1:#24292E"> (mixed </span><span style="--0:#F97583;--1:#BF3441">&#x3C;&#x3C;</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">3</span><span style="--0:#E1E4E8;--1:#24292E">)) </span><span style="--0:#F97583;--1:#BF3441">&#x26;</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">0x</span><span style="--0:#79B8FF;--1:#005CC5">FF</span><span style="--0:#E1E4E8;--1:#24292E">   </span><span style="--0:#99A0A6;--1:#616972"># ROL8(mixed, 3)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">        </span></span><span style="--0:#E1E4E8;--1:#24292E">result[index] </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">SBOX</span><span style="--0:#E1E4E8;--1:#24292E">[rotated]</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">8</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">return</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">bytes</span><span style="--0:#E1E4E8;--1:#24292E">(result)</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="def next_iv(stream, xor_key):    result = bytearray(16)    for index, value in enumerate(stream):        key_byte = (xor_key >> (8 * (index &#x26; 7))) &#x26; 0xFF        mixed = (value ^ (31 * index) ^ key_byte) &#x26; 0xFF        rotated = ((mixed >> 5) | (mixed << 3)) &#x26; 0xFF   # ROL8(mixed, 3)        result[index] = SBOX[rotated]    return bytes(result)"><div></div></button></div></figure></div>
+<p>注意它的用途不是解密 AES 密文块，而是拿 AES 当 keystream 发生器。密钥编排是标准 AES-128 的形状（含标准 RCON），只是把 SBox 换成了自定义的 256 字节表。轮结构仍然是 <code>SubBytes → ShiftRows → MixColumns → AddRoundKey</code>，末轮省略 <code>MixColumns</code>。</p>
+<hr>
+<h2 id="用失败点锁定处理顺序与压缩方言">用失败点锁定处理顺序与压缩方言<a class="anchor" href="#用失败点锁定处理顺序与压缩方言"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>现在有两个未定项：稀疏解密和解压的先后顺序，以及用哪种 LZ4。组合起来是四种可能，而且块目录和数据块可能各不相同。</p>
+<p>如果判据是”能不能解压出东西”，这一步会很难判——LZ4 是自同步的，错误输入常常能吐出一段前缀再失败，容易被当成”基本对了”。所以判据必须是<strong>严格解压长度</strong>：解压器要求恰好产出块目录声明的长度，多一字节、少一字节、有尾部残留都算失败。</p>
+<p>矩阵跑出来是这样：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>输入</th><th>解压器</th><th>结果</th></tr></thead><tbody><tr><td>未做 sparse 的 blocks info</td><td>标准 LZ4</td><td><code>invalid match distance 26037</code></td></tr><tr><td>做过 sparse 的 blocks info</td><td>标准 LZ4</td><td>成功，严格得到 137 字节</td></tr><tr><td>未做 sparse 的数据块</td><td>LZ4Inv</td><td><code>invalid match distance 34048</code></td></tr><tr><td>做过 sparse 的数据块</td><td>标准 LZ4</td><td><code>invalid match distance 22</code></td></tr><tr><td>做过 sparse 的数据块</td><td>LZ4Inv</td><td>成功，严格得到 6116 字节</td></tr></tbody></table>
+<p>五行同时固定了两条不同的流水线：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">blocks info：稀疏 VFSAES -> 标准 LZ4</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">data block ：稀疏 VFSAES -> LZ4Inv</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="blocks info：稀疏 VFSAES -> 标准 LZ4data block ：稀疏 VFSAES -> LZ4Inv"><div></div></button></div></figure></div>
+<p>三个失败距离各自否掉了一条路：<code>26037</code> 说明块目录必须先解密；<code>34048</code> 说明 LZ4Inv 同样在 VFSAES 之后，方言不能替代解密；<code>22</code> 最有意思——它说明”解密对了但方言错了”是一种独立的失败，如果没有严格长度判据，这种情况很可能被误判成”解密错了”，然后回头去调 key。</p>
+<p><strong>失败点的位置本身是信息。</strong> 这是强判据最实际的回报。</p>
+<h3 id="lz4inv-到底改了什么">LZ4Inv 到底改了什么<a class="anchor" href="#lz4inv-到底改了什么"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<p>它保留了 LZ4 的 literal / match / 扩展长度状态机，只动两个编码细节。</p>
+<p>第一个是 token 的两个 4-bit 长度域不再连续，而是按 2 位一组交错：</p>
+<svg id="svg-endfield-lz4inv" viewBox="0 0 720 235" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto" role="img" aria-label="标准 LZ4 与 LZ4Inv 的 token 位布局对比">
+  <style>
+    #svg-endfield-lz4inv .b{fill:none;stroke:currentColor;stroke-width:1.4}
+    #svg-endfield-lz4inv .t{fill:currentColor;font-family:sans-serif;font-size:12px}
+    #svg-endfield-lz4inv .c{fill:currentColor;font-family:monospace;font-size:12.5px}
+    #svg-endfield-lz4inv .s{fill:currentColor;font-family:sans-serif;font-size:10.5px;opacity:0.82}
+  </style>
+  <text class="s" x="246" y="26">literal 长度（4 位）</text>
+  <text class="s" x="478" y="26">match 长度（4 位）</text>
+  <text class="t" x="16" y="60">标准 LZ4</text>
+  <rect class="b" x="130" y="38" width="58" height="32"></rect><text class="c" x="150" y="59">L3</text>
+  <rect class="b" x="188" y="38" width="58" height="32"></rect><text class="c" x="208" y="59">L2</text>
+  <rect class="b" x="246" y="38" width="58" height="32"></rect><text class="c" x="266" y="59">L1</text>
+  <rect class="b" x="304" y="38" width="58" height="32"></rect><text class="c" x="324" y="59">L0</text>
+  <rect class="b" x="362" y="38" width="58" height="32"></rect><text class="c" x="382" y="59">M3</text>
+  <rect class="b" x="420" y="38" width="58" height="32"></rect><text class="c" x="440" y="59">M2</text>
+  <rect class="b" x="478" y="38" width="58" height="32"></rect><text class="c" x="498" y="59">M1</text>
+  <rect class="b" x="536" y="38" width="58" height="32"></rect><text class="c" x="556" y="59">M0</text>
+  <text class="s" x="130" y="96">两个长度域按 2 位一组交错，掩码 0x33 取 literal，0xCC 取 match</text>
+  <text class="t" x="16" y="130">LZ4Inv</text>
+  <rect class="b" x="130" y="108" width="58" height="32"></rect><text class="c" x="150" y="129">M3</text>
+  <rect class="b" x="188" y="108" width="58" height="32"></rect><text class="c" x="208" y="129">M2</text>
+  <rect class="b" x="246" y="108" width="58" height="32"></rect><text class="c" x="266" y="129">L3</text>
+  <rect class="b" x="304" y="108" width="58" height="32"></rect><text class="c" x="324" y="129">L2</text>
+  <rect class="b" x="362" y="108" width="58" height="32"></rect><text class="c" x="382" y="129">M1</text>
+  <rect class="b" x="420" y="108" width="58" height="32"></rect><text class="c" x="440" y="129">M0</text>
+  <rect class="b" x="478" y="108" width="58" height="32"></rect><text class="c" x="498" y="129">L1</text>
+  <rect class="b" x="536" y="108" width="58" height="32"></rect><text class="c" x="556" y="129">L0</text>
+  <text class="s" x="148" y="160">bit7</text>
+  <text class="s" x="206" y="160">bit6</text>
+  <text class="s" x="264" y="160">bit5</text>
+  <text class="s" x="322" y="160">bit4</text>
+  <text class="s" x="380" y="160">bit3</text>
+  <text class="s" x="438" y="160">bit2</text>
+  <text class="s" x="496" y="160">bit1</text>
+  <text class="s" x="554" y="160">bit0</text>
+  <text class="s" x="16" y="192">match distance 同时由标准 LZ4 的小端 uint16 改为大端 uint16。</text>
+  <text class="s" x="16" y="212">只改 token 而保留小端距离，或只改距离而沿用连续半字节，都会在首个相关序列失败。</text>
+</svg>
+<p>写成代码就是这样，两个域用同一套位运算取：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="python"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#F97583;--1:#BF3441">def</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#B392F0;--1:#6F42C1">token_lengths</span><span style="--0:#E1E4E8;--1:#24292E">(token, inverted):</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">if</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">not</span><span style="--0:#E1E4E8;--1:#24292E"> inverted:</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent">        </span><span style="--0:#F97583;--1:#BF3441">return</span><span style="--0:#E1E4E8;--1:#24292E"> token </span><span style="--0:#F97583;--1:#BF3441">>></span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">4</span><span style="--0:#E1E4E8;--1:#24292E">, token </span><span style="--0:#F97583;--1:#BF3441">&#x26;</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">0x</span><span style="--0:#79B8FF;--1:#005CC5">0F</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">literal_bits </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> token </span><span style="--0:#F97583;--1:#BF3441">&#x26;</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">0x</span><span style="--0:#79B8FF;--1:#005CC5">33</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">match_bits </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> (token </span><span style="--0:#F97583;--1:#BF3441">&#x26;</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">0x</span><span style="--0:#79B8FF;--1:#005CC5">CC</span><span style="--0:#E1E4E8;--1:#24292E">) </span><span style="--0:#F97583;--1:#BF3441">>></span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">2</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">literal_length </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> (literal_bits </span><span style="--0:#F97583;--1:#BF3441">&#x26;</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">0x</span><span style="--0:#79B8FF;--1:#005CC5">03</span><span style="--0:#E1E4E8;--1:#24292E">) </span><span style="--0:#F97583;--1:#BF3441">|</span><span style="--0:#E1E4E8;--1:#24292E"> (literal_bits </span><span style="--0:#F97583;--1:#BF3441">>></span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">2</span><span style="--0:#E1E4E8;--1:#24292E">)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">match_length </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> (match_bits </span><span style="--0:#F97583;--1:#BF3441">&#x26;</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">0x</span><span style="--0:#79B8FF;--1:#005CC5">03</span><span style="--0:#E1E4E8;--1:#24292E">) </span><span style="--0:#F97583;--1:#BF3441">|</span><span style="--0:#E1E4E8;--1:#24292E"> (match_bits </span><span style="--0:#F97583;--1:#BF3441">>></span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">2</span><span style="--0:#E1E4E8;--1:#24292E">)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">8</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">return</span><span style="--0:#E1E4E8;--1:#24292E"> literal_length, match_length</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="def token_lengths(token, inverted):    if not inverted:        return token >> 4, token &#x26; 0x0F    literal_bits = token &#x26; 0x33    match_bits = (token &#x26; 0xCC) >> 2    literal_length = (literal_bits &#x26; 0x03) | (literal_bits >> 2)    match_length = (match_bits &#x26; 0x03) | (match_bits >> 2)    return literal_length, match_length"><div></div></button></div></figure></div>
+<p>第二个是 match distance 从小端 <code>uint16</code> 改成大端 <code>uint16</code>。</p>
+<p>这两处必须同时改。只改 token 保留小端距离，或者只改距离沿用连续半字节，都会在第一个相关序列上失败——这也是矩阵里 <code>distance 22</code> 那一格的来源：sparse 已经对了，token 半字节也拆对了，唯独距离端序没改，于是距离被读成一个小得离谱的值。</p>
+<h3 id="块目录里的整数混淆">块目录里的整数混淆<a class="anchor" href="#块目录里的整数混淆"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<p>块目录经过 VFSAES 和标准 LZ4 之后仍然不是标准 UnityFS 的 blocks info：计数、尺寸、flag、offset 和名称还各自套了一层整数混淆。</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">blocksCount    : 0x8A7BF723, ROR32(.., 18), XOR 0x91CE0A4F</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">block encFlags : XOR 0x9CD6</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">block flags    : ROL16(.., 14), XOR 0x523F</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">block sizes    : XOR 0xA121, ROR32(.., 18), XOR 0xF74324EE</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code">
+</div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">nodesCount     : 0x5DE50A6B, ROR32(.., 18), XOR 0xE4C1D9F2</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">node field a   : XOR 0x8E06A9F8</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">8</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">node name[j]   : XOR (j XOR 0x97)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">9</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">node flags     : ROR32(.., 18), XOR 0xF13927C4, XOR field b</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">10</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">node offset/sz : XOR 0xDAD76848, ROL64(.., 14), XOR 0xA4F1A11747816520</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="blocksCount    : 0x8A7BF723, ROR32(.., 18), XOR 0x91CE0A4Fblock encFlags : XOR 0x9CD6block flags    : ROL16(.., 14), XOR 0x523Fblock sizes    : XOR 0xA121, ROR32(.., 18), XOR 0xF74324EEnodesCount     : 0x5DE50A6B, ROR32(.., 18), XOR 0xE4C1D9F2node field a   : XOR 0x8E06A9F8node name[j]   : XOR (j XOR 0x97)node flags     : ROR32(.., 18), XOR 0xF13927C4, XOR field bnode offset/sz : XOR 0xDAD76848, ROL64(.., 14), XOR 0xA4F1A11747816520"><div></div></button></div></figure></div>
+<p>有一个坑：计数字段中间有一次小端读取加端序反转，不能简化成”对大端原值直接异或一个常量”。实现必须按原始字节顺序复现整个过程，否则在某些取值上恰好等价、在另一些上不等价——这是最难查的一类错误，因为它间歇性成立。</p>
+<hr>
+<h2 id="四个独立约束同时闭合">四个独立约束同时闭合<a class="anchor" href="#四个独立约束同时闭合"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>混淆逆变换跑完，样本的块目录是这样：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">blocksCount = 1</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">block[0].compressedSize   = 0x8FD   (2301)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">block[0].uncompressedSize = 0x17E4  (6116)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">block[0].flags            = 5</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code">
+</div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">nodesCount = 2</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">node[0] = CAB-d29c4e95cbb3b4d25d7f11ebc90d49ca</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">8</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">          </span></span><span style="--0:#e1e4e8;--1:#24292e">offset 0x0,    size 0x17D4 (6100), flags 4</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">9</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">node[1] = CAB-d29c4e95cbb3b4d25d7f11ebc90d49ca.resS</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">10</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">          </span></span><span style="--0:#e1e4e8;--1:#24292e">offset 0x17D4, size 0x10   (16),   flags 0</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="blocksCount = 1block[0].compressedSize   = 0x8FD   (2301)block[0].uncompressedSize = 0x17E4  (6116)block[0].flags            = 5nodesCount = 2node[0] = CAB-d29c4e95cbb3b4d25d7f11ebc90d49ca          offset 0x0,    size 0x17D4 (6100), flags 4node[1] = CAB-d29c4e95cbb3b4d25d7f11ebc90d49ca.resS          offset 0x17D4, size 0x10   (16),   flags 0"><div></div></button></div></figure></div>
+<p>这时候四个互相独立的约束同时成立：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">0xA0 + 0x8FD = 0x99D = 2461        压缩块正好落在物理文件尾</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">6100 + 16 = 6116                    node 恰好覆盖完整解压数据</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">每个 node 的 offset + size &#x3C;= 6116  无越界</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">两个路径构成合法的 Unity CAB / .resS 关系</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="0xA0 + 0x8FD = 0x99D = 2461        压缩块正好落在物理文件尾6100 + 16 = 6116                    node 恰好覆盖完整解压数据每个 node 的 offset + size <= 6116  无越界两个路径构成合法的 Unity CAB / .resS 关系"><div></div></button></div></figure></div>
+<p>单独看每一条都可能被巧合满足：错误的字段公式偶尔能产出一段合法短文本；错误的常量偶尔能产出不越界的小数值；尺寸关系在只有一个块时也不算特别苛刻。但要四条同时成立——物理尾、解压长度、node 覆盖、路径语义——就不再是巧合能达到的了。</p>
+<p><strong>这就是候选实现被提升为本机兼容事实的那一刻。</strong> 不是因为它跑通了，而是因为四个来源不同的约束在同一组数值上交汇。这个结论只覆盖已验样本的输入输出行为，不覆盖 <code>.tvm0</code> 内部的实现语义。</p>
+<hr>
+<h2 id="让每一层能独立失败">让每一层能独立失败<a class="anchor" href="#让每一层能独立失败"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>到这里算法链全通了，接下来是工程问题：怎么组织实现，让以后出错时能立刻定位到层。</p>
+<p>我把它拆成六个文件，拆分依据不是代码量，而是<strong>失败条件是否独立</strong>：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>文件</th><th>职责</th><th>关键失败条件</th></tr></thead><tbody><tr><td><code>vfs_crypto.py</code></td><td>key 变换、参考 ChaCha20、PyCryptodome 对照、两种 nonce</td><td>key/nonce 长度错误、两个实现输出不一致</td></tr><tr><td><code>vfs_format.py</code></td><td><code>.blc</code> 结构、CRC、计数、可选字段</td><td>CRC 不符、负计数、尾部剩余、声明文件数不符</td></tr><tr><td><code>vfs_access.py</code></td><td><code>.chk</code> 区间读取、可选文件解密</td><td>文件越界、恢复后 MD5 不符</td></tr><tr><td><code>vfs_bundle_crypto.py</code></td><td>自定义 AES 流、IV 演进、稀疏抽取与散回</td><td>输入区间或稀疏选择规律不符</td></tr><tr><td><code>lz4_inv.py</code></td><td>标准 / LZ4Inv 共用状态机</td><td>非法距离、输出越界、尾部剩余、长度不符</td></tr><tr><td><code>vfs_bundle_format.py</code></td><td>头、目录、block、node、UnityFS 重封装</td><td>目录越界、未知 flag、node 越界、目录尾部剩余</td></tr></tbody></table>
+<p>每个文件只对自己那一层的判据负责，并且在判据不满足时抛错而不是返回部分结果。这样一个新包解不开的时候，异常类型直接告诉我是密码层、容器层还是语义层的问题。</p>
+<p>重封装那一步刻意不做任何”修补”：解码头、目录、block、node，解压全部块并验证 node 区间，然后写标准 <code>UnityFS\0</code> + version 6 + <code>2021.3.34f5</code>，以解压数据的 MD5 作为 blocks-data hash，每个块写成 <code>compressedSize == uncompressedSize</code> 的 <code>None</code> 压缩，最后原样追加解压数据。<strong>只换容器，不动 SerializedFile 和 <code>.resS</code> 的任何一个字节。</strong> 这条纪律保证了后续所有分析看到的都是客户端看到的字节。</p>
+<hr>
+<h2 id="三级验收把能解变成稳定">三级验收：把”能解”变成”稳定”<a class="anchor" href="#三级验收把能解变成稳定"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>一个样本通过不代表实现正确，只代表实现没有在这个样本上暴露问题。所以验收半径要主动扩大，而且每一级要针对不同的失效模式。</p>
+<p><strong>第一级，最小样本。</strong> 恢复结果 6319 字节，SHA-256 <code>858c6bd23289be88b88c9e1f98af7d63958241669372d0fd307219fdd11dbc96</code>，头为 <code>UnityFS\0</code>。UnityPy 读到 Unity 版本 <code>2021.3.34f5</code>、一个 4x4 的 <code>Texture2D T_default_mro_MRO</code>、一个 <code>AssetBundle</code>，对象总数 2，解析错误 0。这一级验的是全链路通。</p>
+<p><strong>第二级，完整组。</strong> 扫 <code>InitBundle</code> 的全部 1048 个包：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>项目</th><th align="right">结果</th></tr></thead><tbody><tr><td>Bundle 数</td><td align="right">1048</td></tr><tr><td>Unity 对象数</td><td align="right">19,370</td></tr><tr><td>Bundle 解包错误</td><td align="right">0</td></tr></tbody></table>
+<p>这一级验的是实现没有隐式绑定单一头长度、单一块大小或单一 node 数——2461 字节样本只有 1 个块 2 个 node，覆盖不到多块、多 node、<code>BlocksInfoAtTheEnd</code> 这些分支。</p>
+<p><strong>第三级，大载荷。</strong> 恢复三个数十 MB 的角色 Shader 包，并继续解析 Unity 2021.3 的 <code>subShaderBlobs</code>、segment、entry table 直到 DXBC。这一级验的是长块、资源 node 和大二进制载荷的字节完整性——能枚举对象只说明容器对了，能一路解析到 DXBC 内部结构才说明每个字节都对。</p>
+<p>三级下来，密码层用 CRC32/MD5/SHA-256 判，容器层用物理区间/严格解压长度/node 覆盖判，语义层用 Unity 对象和 Shader 内部结构判。任何一层出现”可读字符串”都没有被当成成功。</p>
+<hr>
+<h2 id="失败记录及其信息增量">失败记录及其信息增量<a class="anchor" href="#失败记录及其信息增量"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>整套实现之所以能被复核，靠的正是这些失败各自钉死了一个参数。</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>失败路线</th><th>直接现象</th><th>由失败得到的结论</th></tr></thead><tbody><tr><td>把 <code>index_main.json</code> 当索引入口</td><td>与调用链和 CRC 格式不闭合</td><td>真实索引在哈希路径下的 <code>.blc</code></td></tr><tr><td>默认 key 直接 Base64 解码</td><td>三个 counter 的 CRC32 全失败</td><td>key 后面还有一步逐字节变换</td></tr><tr><td>key 用 add / xor</td><td>counter 0/1/2 全失败</td><td><code>sub</code> 不是可互换的混淆</td></tr><tr><td>正确 key 但 counter 0/2</td><td>CRC32 失败</td><td>counter 是协议参数，不是库默认差异</td></tr><tr><td>只搜 <code>UnityFS</code> 魔数</td><td>正式版头已整体替换</td><td>必须用识别式加物理布局</td></tr><tr><td>把 <code>encrypted=false</code> 当无保护</td><td>VFS MD5 正确但 0 个对象</td><td>文件层与归档层独立</td></tr><tr><td>对整个数据块连续 AES</td><td>会破坏大量原本可读区域</td><td>加密选择是稀疏的</td></tr><tr><td>按差分数量把选中数改成 141</td><td>在其他包上失效</td><td>差分数量不是算法参数</td></tr><tr><td>原始 blocks info 直接 LZ4</td><td><code>invalid match distance 26037</code></td><td>解压前必须先做 VFSAES</td></tr><tr><td>数据块用标准 LZ4</td><td>sparse 后仍在 <code>distance 22</code> 失败</td><td>数据块不是标准 LZ4 方言</td></tr><tr><td>LZ4Inv 跳过 sparse</td><td><code>distance 34048</code></td><td>方言不能替代解密</td></tr><tr><td>强制 <code>header.size == 文件长度</code></td><td>合法小样本得到巨大混淆值</td><td>物理边界来自输入流与块区间</td></tr><tr><td>把 <code>PROTECTED</code> 字符串当归档标志</td><td>交叉引用属于 Vulkan 枚举</td><td>字符串命中必须结合调用上下文</td></tr><tr><td>线性反编译 <code>.tvm0</code></td><td>调度式控制流无法稳定还原分支</td><td>结论限定为入口归属</td></tr></tbody></table>
+<hr>
+<h2 id="复盘可迁移的部分">复盘：可迁移的部分<a class="anchor" href="#复盘可迁移的部分"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>抛开终末地这个具体目标，这次过程里真正能带到下一个自研容器上的东西是这些。</p>
+<p><strong>先数层，再猜算法。</strong> 矛盾观察（校验通过 + 解析为空）比任何单点现象都有价值，它直接给出层次数。层次数搞错，后面所有努力都会归因错位置。</p>
+<p><strong>判据先于方法。</strong> 动手之前把所有可用的结构性约束列出来排序，然后只用强判据判成败。可读字符串不算判据。这一条决定了失败会不会失败在有信息的位置上。</p>
+<p><strong>只测成功组合等于没测。</strong> 12 格里 11 格失败的形状，比 1 格成功更能说明问题。它同时排除了”参数可互换”和”默认值差异”两类误解。</p>
+<p><strong>否证是廉价的推进。</strong> 画一次调用图否掉 <code>index_main.json</code>，走一次调用链否掉”托管层还有第二套解密”，成本都远低于对着错误输入调参数。关掉一个搜索空间和找到一个答案同样有价值。</p>
+<p><strong>最小样本优先。</strong> 挑组里最小的那个，让每一个约束都保持鉴别力。包越大，巧合越容易发生。</p>
+<p><strong>不要让观测数据反向修正算法定义。</strong> 143 与 141 那个差 2 是这次最险的一个坑。观测量和算法参数是两回事，对不上时先怀疑自己对观测量的解释。</p>
+<p><strong>字段名不等于字段语义。</strong> 一个叫 <code>size</code> 的字段不承载物理长度是完全可能的。让约束系统的其他部分承担职责，比给它编解释安全。</p>
+<p><strong>目标决定是否需要语义恢复。</strong> 算法体在虚拟化节里，如果目标是恢复资源，就可以把问题限定为兼容复现：用足够多、彼此独立的约束验证输入输出行为。这个降级必须写进结论：能说的是”输出与本机正式版资源相容”，不能说”已完整还原”。</p>
+<p><strong>边界要显式声明。</strong> 本轮没有恢复 <code>.tvm0</code> 的 dispatcher、虚拟寄存器和 handler 表，也没有把内层常量做成逐指令的独立恢复。写清楚这些，别人才能判断哪部分可以直接引用、哪部分需要自己重做。</p>
+<hr>
+<h2 id="附录关键地址与常量索引">附录：关键地址与常量索引<a class="anchor" href="#附录关键地址与常量索引"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>客户端 Unity 版本 <code>2021.3.34f5</code>。<code>UnityPlayer.dll</code> 文件大小 38,194,232。</p>
+<h3 id="gameassemblydll">GameAssembly.dll<a class="anchor" href="#gameassemblydll"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>符号</th><th>RVA</th><th>说明</th></tr></thead><tbody><tr><td><code>VirtualFileSystem.CreateFromStreamAssetFile</code></td><td><code>0x30762C0</code></td><td>VFS 索引入口</td></tr><tr><td><code>VFSUtils.DecryptCreateBlockGroupInfo</code></td><td><code>0x30769C0</code></td><td>索引解密，<code>0x3076C52</code> 处 <code>mov r9d, 1</code> 定 counter</td></tr><tr><td><code>VirtualFileSystem.GetAssetBytes</code></td><td><code>0x2F23370</code></td><td>按文件记录读取并可选解密</td></tr><tr><td><code>VirtualFileSystem.GetCommonChachaKeyBs</code></td><td><code>0x2F7D740</code></td><td>公共 key 生成</td></tr><tr><td><code>Beyond.Security.IOOO000iiI::_IIiiIIIoO</code></td><td><code>0x2F800B0</code></td><td>逐字节减法变换</td></tr><tr><td><code>XXE1::.ctor</code></td><td><code>0x2F225D0</code></td><td>key / nonce / counter</td></tr><tr><td><code>XXE1::WorkBytes</code></td><td><code>0x2EFF3D0</code></td><td>ChaCha20 流生成</td></tr><tr><td><code>XXE1::QuarterRound</code></td><td><code>0x2EFF4E0</code></td><td>quarter round</td></tr><tr><td><code>UnityFileLoaderHelper::ReadAssetBundle</code></td><td><code>0x3BB2FF0</code></td><td>托管资源加载入口</td></tr><tr><td><code>UnityStreamingFileHelper::ReadStreamAssetBundle</code></td><td><code>0x3BB30B0</code></td><td>组路径并传 crc / offset</td></tr><tr><td><code>AssetBundle::LoadFromFile_Internal</code></td><td><code>0x3BB36F0</code></td><td>internal call 包装，末尾 <code>jmp rax</code></td></tr></tbody></table>
+<h3 id="unityplayerdll">UnityPlayer.dll<a class="anchor" href="#unityplayerdll"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>符号</th><th>RVA</th><th>说明</th></tr></thead><tbody><tr><td>定制归档入口</td><td><code>0x672300</code></td><td>native 侧归档创建</td></tr><tr><td>核心头读取</td><td><code>0x674090</code></td><td>首条指令跳入 <code>.tvm0</code></td></tr><tr><td>跳转目标</td><td><code>0x23CBC05</code></td><td><code>.tvm0</code> 内</td></tr><tr><td><code>.tvm0</code> 节</td><td><code>0x23C6000</code></td><td>虚拟大小 <code>0x17FFEA</code>，raw <code>0x22C9200 + 0x17B000</code></td></tr><tr><td>归档失败字符串</td><td><code>0x1D8C0C8</code></td><td>文件偏移 <code>0x1D8ACC8</code></td></tr><tr><td>该字符串唯一引用</td><td><code>0x23CD155</code></td><td><code>.tvm0</code> 内</td></tr></tbody></table>
+<h3 id="外层-vfs">外层 VFS<a class="anchor" href="#外层-vfs"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">.blc 头部：&#x3C;uint32 protocol = 3>&#x3C;uint64 nonce>，小端，ChaCha20 从偏移 12 开始</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">文件级 nonce：&#x3C;uint32 3>&#x3C;uint64 ivSeed>，小端</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">ChaCha20 counter：1</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">公共 key：E95B317AC4F828569D23A86BF271DCB53E846FA75C924D671DBA8E38F4CA52E1</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">key 推导：Base64("Ks6k3zhrV5gCnBfZVqAgLqzl3BC/08Dagi4BZzU9xUY=") 逐字节减 "Assets/Beyond/DynamicAssets/"</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">索引 codeVersion：4        独立 version 字段：22097503</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code=".blc 头部：<uint32 protocol = 3><uint64 nonce>，小端，ChaCha20 从偏移 12 开始文件级 nonce：<uint32 3><uint64 ivSeed>，小端ChaCha20 counter：1公共 key：E95B317AC4F828569D23A86BF271DCB53E846FA75C924D671DBA8E38F4CA52E1key 推导：Base64(&#x22;Ks6k3zhrV5gCnBfZVqAgLqzl3BC/08Dagi4BZzU9xUY=&#x22;) 逐字节减 &#x22;Assets/Beyond/DynamicAssets/&#x22;索引 codeVersion：4        独立 version 字段：22097503"><div></div></button></div></figure></div>
+<h3 id="内层归档">内层归档<a class="anchor" href="#内层归档"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">识别式：x = a XOR 0x4A92F0CD</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">        </span></span><span style="--0:#e1e4e8;--1:#24292e">expected = ((4 * x) AND 0xFFFF0000) XOR ROR32(x, 14) XOR 0xD8B1E637</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">        </span></span><span style="--0:#e1e4e8;--1:#24292e">valid = (b == expected)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code">
+</div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">VFSAES Key : 3A F1 8C 47 B2 09 6D EE 51 24 90 7C 18 D3 A4 62</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">VFSAES IV  : C7 12 5E A9 04 DB 33 88 F2 0E 77 49 65 BA 1C 93</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">IV 演进 XOR key：0xF19AB7752CDD0196</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">8</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">自定义 SBox：256 字节，见 tools/vfs_bundle_crypto.py</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">9</div></div><div class="code">
+</div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">10</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">稀疏规律：length &#x3C;= 256 时整块变换；否则 blockCount = length / 16，</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">11</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">          </span></span><span style="--0:#e1e4e8;--1:#24292e">step = 256 / blockCount（blockCount > 256 时为 1），</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">12</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">          </span></span><span style="--0:#e1e4e8;--1:#24292e">对前 min(blockCount, 256) 块各取开头 step 字节进 256 字节临时缓冲</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">13</div></div><div class="code">
+</div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">14</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">blocks info：稀疏 VFSAES -> 标准 LZ4</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">15</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">data block ：稀疏 VFSAES -> LZ4Inv（token 按 0x33 / 0xCC 交错，distance 大端 uint16）</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="识别式：x = a XOR 0x4A92F0CD        expected = ((4 * x) AND 0xFFFF0000) XOR ROR32(x, 14) XOR 0xD8B1E637        valid = (b == expected)VFSAES Key : 3A F1 8C 47 B2 09 6D EE 51 24 90 7C 18 D3 A4 62VFSAES IV  : C7 12 5E A9 04 DB 33 88 F2 0E 77 49 65 BA 1C 93IV 演进 XOR key：0xF19AB7752CDD0196自定义 SBox：256 字节，见 tools/vfs_bundle_crypto.py稀疏规律：length <= 256 时整块变换；否则 blockCount = length / 16，          step = 256 / blockCount（blockCount > 256 时为 1），          对前 min(blockCount, 256) 块各取开头 step 字节进 256 字节临时缓冲blocks info：稀疏 VFSAES -> 标准 LZ4data block ：稀疏 VFSAES -> LZ4Inv（token 按 0x33 / 0xCC 交错，distance 大端 uint16）"><div></div></button></div></figure></div>
+<p>内层的常量与字段变换公式取自公开兼容实现，再由本机正式版样本的物理区间、稀疏差分、严格解压长度、node 闭合和 1048 包全量扫描逐层验证。它们在本机资源上成立；它们不是对 <code>.tvm0</code> 的逐指令恢复结果。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-wy3xnbws> <div class="nav-cell" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/25-pixel-art-region-first-architecture/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 上一篇
+</span> <span class="nav-title" data-astro-cid-wy3xnbws>像素画重绘的区域优先架构：碎斑的成因与区域连续性</span> </a> </div> <div class="nav-cell next" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/29-code-virtualization-climb-or-bypass/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws>
+下一篇 <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8594;</span> </span> <span class="nav-title" data-astro-cid-wy3xnbws>代码虚拟化的判定与兼容复现边界</span> </a> </div> </nav> </div> </div>  <footer class="micro" data-astro-cid-cymvyra4> <a class="back" href="/blog/minimalist/" data-astro-cid-cymvyra4> <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8592;</span> 返回技术索引 </a> <span class="copy" data-astro-cid-cymvyra4>&copy; 2026 Shrei</span> <span class="colophon" data-astro-cid-cymvyra4>Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div> </body></html> 

@@ -1,0 +1,301 @@
+<!DOCTYPE html><html lang="zh-CN" data-astro-cid-cymvyra4> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>双后端管线的中间表示：确定性起点与有界精修 · Shrei</title><meta name="description" content="实时后端与可微后端各自产出结果图时，任何画面差异都无法归因，也无法跨后端重放。可行的做法是在两者之间放一份版本化的强类型中间表示：实时分支给出确定性起点，精修分支只做有界增量，材质终局只实现一次。本文用一条 D3D12 + PyTorch/CUDA 的油画化管线作证据，拆解这份跨后端合同、光谱颜料语义与缓存失效边界。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/32-dual-backend-intermediate-representation/"><meta property="og:title" content="双后端管线的中间表示：确定性起点与有界精修 · Shrei"><meta property="og:description" content="实时后端与可微后端各自产出结果图时，任何画面差异都无法归因，也无法跨后端重放。可行的做法是在两者之间放一份版本化的强类型中间表示：实时分支给出确定性起点，精修分支只做有界增量，材质终局只实现一次。本文用一条 D3D12 + PyTorch/CUDA 的油画化管线作证据，拆解这份跨后端合同、光谱颜料语义与缓存失效边界。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/32-dual-backend-intermediate-representation/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><!-- 同步主站主题选择：light/dark 显式跟随，auto 或无记录按本地时间。
+             data-theme 取 expressive-code 主题名，同时驱动 light-dark() 色板与代码块配色 --><script>
+            (function () {
+                let stored = null;
+                try {
+                    stored = localStorage.getItem('shrei-theme');
+                } catch (_) {
+                    /* 隐私模式下不可用，按本地时间自动选择 */
+                }
+                const isNight = () => {
+                    const hour = new Date().getHours();
+                    return hour < 6 || hour >= 18;
+                };
+                const themeColor = document.querySelector('[data-theme-color]');
+                const apply = () => {
+                    const dark = stored === 'dark' || (stored !== 'light' && isNight());
+                    document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
+                    if (themeColor) {
+                        themeColor.content = dark ? '#151412' : '#f4f2ec';
+                    }
+                };
+                apply();
+                if (stored !== 'light' && stored !== 'dark') {
+                    const schedule = () => {
+                        const now = new Date();
+                        const next = new Date(now);
+                        if (now.getHours() < 6) {
+                            next.setHours(6, 0, 0, 0);
+                        } else if (now.getHours() < 18) {
+                            next.setHours(18, 0, 0, 0);
+                        } else {
+                            next.setDate(next.getDate() + 1);
+                            next.setHours(6, 0, 0, 0);
+                        }
+                        window.setTimeout(() => {
+                            apply();
+                            schedule();
+                        }, Math.max(1000, next.getTime() - now.getTime()));
+                    };
+                    schedule();
+                }
+            })();
+        </script><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"><style>:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}.topbar[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-cymvyra4]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-cymvyra4]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-cymvyra4]:hover{color:var(--red)}.center[data-astro-cid-cymvyra4]{min-width:0;text-align:center}.to-home[data-astro-cid-cymvyra4]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-cymvyra4]:hover{color:var(--red)}.to-home[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(.25em)}footer[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]{transition:color .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover{color:var(--red)}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(-.25em)}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-cymvyra4]{grid-template-columns:1fr auto}.center[data-astro-cid-cymvyra4]{display:none}footer[data-astro-cid-cymvyra4]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:start}}@media print{.topbar[data-astro-cid-cymvyra4] .to-home[data-astro-cid-cymvyra4],footer[data-astro-cid-cymvyra4]{display:none}}
+</style><link rel="stylesheet" href="/blog/astro/_slug_.Cj97UYPf.css"></head> <body data-astro-cid-cymvyra4> <div class="frame" data-astro-cid-cymvyra4> <div class="topbar micro" data-astro-cid-cymvyra4> <a class="brand" href="/blog/minimalist/" data-astro-cid-cymvyra4>Shrei — Technical Index</a> <div class="center" data-astro-cid-cymvyra4><span class="topbar-category" data-astro-cid-wy3xnbws>图形渲染</span></div> <a class="to-home" href="/blog/" data-astro-cid-cymvyra4>
+博客主站 <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-wy3xnbws> <p class="category micro" data-astro-cid-wy3xnbws>图形渲染</p> <h1 data-astro-cid-wy3xnbws> 双后端管线的中间表示：确定性起点与有界精修  </h1> <div class="meta micro" data-astro-cid-wy3xnbws> <time datetime="2026-08-21" data-astro-cid-wy3xnbws>2026-08-21</time> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>20 min</span> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>6,945 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span class="tags" data-astro-cid-wy3xnbws>D3D12 / CUDA / PyTorch / Intermediate Representation / Differentiable Rendering / Shader</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#两个后端必须汇合在同一份计划上" data-astro-cid-wy3xnbws>两个后端必须汇合在同一份计划上</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#强类型合同先于文件格式" data-astro-cid-wy3xnbws>强类型合同先于文件格式</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#一根笔触由记录和控制点两部分组成" data-astro-cid-wy3xnbws>一根笔触由记录和控制点两部分组成</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#落盘格式必须自带校验" data-astro-cid-wy3xnbws>落盘格式必须自带校验</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#实时分支的职责是给出确定性起点" data-astro-cid-wy3xnbws>实时分支的职责是给出确定性起点</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#精修分支只能做有界增量" data-astro-cid-wy3xnbws>精修分支只能做有界增量</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#光谱颜料在两个分支保持同一语义" data-astro-cid-wy3xnbws>光谱颜料在两个分支保持同一语义</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#湿度和厚度属于材质状态" data-astro-cid-wy3xnbws>湿度和厚度属于材质状态</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#缓存键必须覆盖行为版本" data-astro-cid-wy3xnbws>缓存键必须覆盖行为版本</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#验证口径" data-astro-cid-wy3xnbws>验证口径</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#结论" data-astro-cid-wy3xnbws>结论</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+</a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <p>同一份输入做两条管线，一条追求实时，一条追求质量，最直观的实现是让两个后端各自产生结果图。这样虽然能并排展示，却没有可靠的比较基础：两边的图元数量、路径、参数与材质公式都可能不同；任何画面差异都无法归因，结果也不能跨后端重放。</p>
+<p>可行的做法是把作品定义从渲染后端里抽出来，做成一份版本化的强类型中间表示。实时分支负责分析与确定性规划，精修分支从同一份表示出发、只在有界范围内改动连续参数，优化完成后仍交回同一个材质终局。</p>
+<p>这套分层解决三个问题：</p>
+<ul>
+<li>两个后端消费同一种图元语义，比较对象是表示本身的差异，不是两套隐含算法的差异。</li>
+<li>表示包含完整的资产与参数合同，可以独立保存、校验和重放。</li>
+<li>材质只在共享终局解释一次，避免精修分支另写一套“近似”着色。</li>
+</ul>
+<p>下面的字段布局、容器格式和验收数字取自一条具体管线——D3D12 实时分支加 PyTorch/CUDA 可微精修分支的油画化渲染，它那份中间表示叫 <code>OilPlan</code>。引用它是为了说明合同该固定到什么粒度，同一套分层不依赖这个具体领域。</p>
+<hr>
+<h2 id="两个后端必须汇合在同一份计划上">两个后端必须汇合在同一份计划上<a class="anchor" href="#两个后端必须汇合在同一份计划上"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<svg id="svg-oilplan-branches" viewBox="0 0 760 400" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto" role="img" aria-label="实时分支与可微精修分支通过共享计划和共享材质终局汇合">
+  <style>
+    #svg-oilplan-branches .b{fill:none;stroke:currentColor;stroke-width:1.4}
+    #svg-oilplan-branches .fill{fill:currentColor;fill-opacity:0.07;stroke:currentColor;stroke-width:1.4}
+    #svg-oilplan-branches .t{fill:currentColor;font-family:sans-serif;font-size:12px}
+    #svg-oilplan-branches .s{fill:currentColor;font-family:sans-serif;font-size:10.5px;opacity:0.82}
+    #svg-oilplan-branches .a{fill:none;stroke:currentColor;stroke-width:1.4;marker-end:url(#oilplan-arrow)}
+    #svg-oilplan-branches .dash{fill:none;stroke:currentColor;stroke-width:1.2;stroke-dasharray:5 4;opacity:0.65;marker-end:url(#oilplan-arrow)}
+  </style>
+  <defs>
+    <marker id="oilplan-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="currentColor"></path>
+    </marker>
+  </defs>
+  <rect class="fill" x="24" y="36" width="142" height="62"></rect>
+  <text class="t" x="95" y="62" text-anchor="middle">SourceImage</text>
+  <text class="s" x="95" y="82" text-anchor="middle">RGBA / Linear / LAB</text>
+  <rect class="b" x="214" y="36" width="142" height="62"></rect>
+  <text class="t" x="285" y="62" text-anchor="middle">D3D12 Analyze</text>
+  <text class="s" x="285" y="82" text-anchor="middle">形体 / 方向 / 区域</text>
+  <rect class="b" x="404" y="36" width="142" height="62"></rect>
+  <text class="t" x="475" y="62" text-anchor="middle">确定性规划</text>
+  <text class="s" x="475" y="82" text-anchor="middle">seed + 三层笔触</text>
+  <rect class="fill" x="594" y="36" width="142" height="62"></rect>
+  <text class="t" x="665" y="62" text-anchor="middle">基础计划</text>
+  <text class="s" x="665" y="82" text-anchor="middle">可保存 / 可重放</text>
+  <path class="a" d="M166 67 H214"></path>
+  <path class="a" d="M356 67 H404"></path>
+  <path class="a" d="M546 67 H594"></path>
+  <rect class="b" x="214" y="172" width="142" height="72"></rect>
+  <text class="t" x="285" y="198" text-anchor="middle">Shader 分支</text>
+  <text class="s" x="285" y="218" text-anchor="middle">直接回放 Base Plan</text>
+  <text class="s" x="285" y="234" text-anchor="middle">面向实时预览</text>
+  <rect class="b" x="404" y="172" width="142" height="72"></rect>
+  <text class="t" x="475" y="198" text-anchor="middle">可微精修（CUDA）</text>
+  <text class="s" x="475" y="218" text-anchor="middle">解析式可微栅格</text>
+  <text class="s" x="475" y="234" text-anchor="middle">有界优化 Plan 参数</text>
+  <rect class="fill" x="594" y="177" width="142" height="62"></rect>
+  <text class="t" x="665" y="203" text-anchor="middle">精修后计划</text>
+  <text class="s" x="665" y="223" text-anchor="middle">同一数据结构</text>
+  <path class="a" d="M665 98 V140 H285 V172"></path>
+  <path class="a" d="M665 98 V172 H546"></path>
+  <path class="a" d="M546 208 H594"></path>
+  <rect class="fill" x="214" y="316" width="332" height="62"></rect>
+  <text class="t" x="380" y="342" text-anchor="middle">共享 D3D12 Raster / Mix / Material</text>
+  <text class="s" x="380" y="362" text-anchor="middle">颜料沉积 · 湿混 · 高度 · 法线 · 粗糙度 · Beauty</text>
+  <path class="a" d="M285 244 V316"></path>
+  <path class="a" d="M665 239 V284 H475 V316"></path>
+  <rect class="b" x="594" y="316" width="142" height="62"></rect>
+  <text class="t" x="665" y="342" text-anchor="middle">材质与成片</text>
+  <text class="s" x="665" y="362" text-anchor="middle">同一终局合同</text>
+  <path class="a" d="M546 347 H594"></path>
+</svg>
+<p>精修分支复用实时分支的结果作为起点。服务先用实时分支得到基础计划；若目标调色板仍在 8 色以内，就把同一显示色重建为 31 波段反射率；若需要更多颜料，再重建调色板并把每根笔触的三颜料组合重映射过去。笔触身份、路径与笔刷合同继续沿用。</p>
+<p>完成优化后，系统会生成基础、部分混合和完整优化等候选计划，逐个调用同一个 <code>replay_plan</code> 终局，再根据统一指标选择结果。精修分支的可微栅格只负责给优化器梯度，最终交付不使用一套独立的 PyTorch 材质。</p>
+<p>运行环境不满足能力时也不改变语义。实时分支与最终回放要求可用的现代 D3D12 后端；精修分支额外要求 CUDA 版 PyTorch 和 8GB 级显存。缺少能力时返回明确错误，不切换到 CPU 近似路径。</p>
+<h2 id="强类型合同先于文件格式">强类型合同先于文件格式<a class="anchor" href="#强类型合同先于文件格式"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>这份表示在内存中对应一个不可变的计划记录：</p>
+<div class="expressive-code"><link rel="stylesheet" href="/blog/astro/ec.iz9dg.css"><script type="module" src="/blog/astro/ec.0vx5m.js"></script><figure class="frame"><figcaption class="header"></figcaption><pre data-language="python"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">StrokePlan(</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">width,</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">height,</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">strokes,       </span><span style="--0:#99A0A6;--1:#616972"># 固定 dtype 的一维记录</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">points,        </span><span style="--0:#99A0A6;--1:#616972"># float32[N, 6]</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">palette,       </span><span style="--0:#99A0A6;--1:#616972"># 名称、光谱反射率、显示色</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">brush_manifest,</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">8</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">branch,</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">9</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">seed,</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">10</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">source_hash,</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">11</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">)</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="StrokePlan(    width,    height,    strokes,       # 固定 dtype 的一维记录    points,        # float32[N, 6]    palette,       # 名称、光谱反射率、显示色    brush_manifest,    branch,    seed,    source_hash,)"><div></div></button></div></figure></div>
+<p>构造时会检查：</p>
+<ul>
+<li>画布尺寸为正；</li>
+<li><code>strokes</code> 的 dtype 精确匹配合同；</li>
+<li><code>points</code> 是连续的 <code>float32[N, 6]</code>，所有值有限；</li>
+<li>每根笔触的 <code>point_offset + point_count</code> 不越界；</li>
+<li>branch 只能是 <code>shader</code> 或 <code>studio</code>。</li>
+</ul>
+<p>检查连续存储有实际后果。D3D12 上传、NumPy 二进制序列化和 PyTorch 参数化都依赖一致的线性布局；允许任意 stride 会让同一计划在三个边界上产生不同解释。</p>
+<h2 id="一根笔触由记录和控制点两部分组成">一根笔触由记录和控制点两部分组成<a class="anchor" href="#一根笔触由记录和控制点两部分组成"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>笔触记录固定为 48 字节，小端布局：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>字段</th><th align="right">类型</th><th>语义</th></tr></thead><tbody><tr><td><code>point_offset</code></td><td align="right"><code>u32</code></td><td>在全局控制点表中的起点</td></tr><tr><td><code>point_count</code></td><td align="right"><code>u16</code></td><td>本笔触的控制点数</td></tr><tr><td><code>brush_id</code> / <code>layer</code> / <code>flags</code></td><td align="right"><code>u16 × 3</code></td><td>笔刷、粗中细层与行为标记</td></tr><tr><td><code>seed</code></td><td align="right"><code>u32</code></td><td>确定性局部随机种子</td></tr><tr><td><code>pigment_index</code></td><td align="right"><code>u8 × 3</code></td><td>最多三种颜料索引</td></tr><tr><td><code>pigment_weight</code></td><td align="right"><code>f32 × 3</code></td><td>三颜料混合权重</td></tr><tr><td><code>opacity</code></td><td align="right"><code>f32</code></td><td>覆盖强度</td></tr><tr><td><code>thickness</code></td><td align="right"><code>f32</code></td><td>厚涂沉积</td></tr><tr><td><code>wetness</code></td><td align="right"><code>f32</code></td><td>湿混与高光状态</td></tr><tr><td><code>hardness</code></td><td align="right"><code>f32</code></td><td>笔触边缘硬度</td></tr></tbody></table>
+<p>控制点每项 24 字节：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">x / y / width / pressure / load / time</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="x / y / width / pressure / load / time"><div></div></button></div></figure></div>
+<p>位置和宽度都用相对画布的归一化值。分辨率变化时，计划语义不依赖某张固定像素画布；终局根据目标宽高把它解释为像素半径和采样位置。</p>
+<svg id="svg-oilplan-record" viewBox="0 0 760 235" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto" role="img" aria-label="笔触记录与控制点表布局">
+  <style>
+    #svg-oilplan-record .b{fill:none;stroke:currentColor;stroke-width:1.3}
+    #svg-oilplan-record .fill{fill:currentColor;fill-opacity:0.07;stroke:currentColor;stroke-width:1.3}
+    #svg-oilplan-record .t{fill:currentColor;font-family:sans-serif;font-size:11.5px}
+    #svg-oilplan-record .s{fill:currentColor;font-family:sans-serif;font-size:10px;opacity:0.82}
+    #svg-oilplan-record .a{fill:none;stroke:currentColor;stroke-width:1.3;marker-end:url(#oil-record-arrow)}
+  </style>
+  <defs>
+    <marker id="oil-record-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="currentColor"></path>
+    </marker>
+  </defs>
+</svg><p><text class="t" x="20" y="26">StrokeRecordV1 · 48 bytes</text>
+<rect class="fill" x="20" y="42" width="112" height="56">
+<text class="t" x="76" y="64" text-anchor="middle">point range</text>
+<text class="s" x="76" y="83" text-anchor="middle">offset + count</text>
+<rect class="b" x="132" y="42" width="118" height="56">
+<text class="t" x="191" y="64" text-anchor="middle">brush / layer</text>
+<text class="s" x="191" y="83" text-anchor="middle">flags + seed</text>
+<rect class="fill" x="250" y="42" width="142" height="56">
+<text class="t" x="321" y="64" text-anchor="middle">pigment index × 3</text>
+<text class="s" x="321" y="83" text-anchor="middle">weight × 3</text>
+<rect class="b" x="392" y="42" width="174" height="56">
+<text class="t" x="479" y="64" text-anchor="middle">opacity / thickness</text>
+<text class="s" x="479" y="83" text-anchor="middle">wetness / hardness</text></rect></rect></rect></rect></p>
+  <path class="a" d="M76 98 V137 H110">
+  <text class="s" x="146" y="128">索引全局 points.bin</text>
+<p><text class="t" x="20" y="166">StrokePointV1 · 24 bytes each</text>
+<rect class="b" x="20" y="180" width="90" height="40"><text class="t" x="65" y="205" text-anchor="middle">x / y</text>
+<rect class="fill" x="110" y="180" width="110" height="40"><text class="t" x="165" y="205" text-anchor="middle">width</text>
+<rect class="b" x="220" y="180" width="110" height="40"><text class="t" x="275" y="205" text-anchor="middle">pressure</text>
+<rect class="fill" x="330" y="180" width="110" height="40"><text class="t" x="385" y="205" text-anchor="middle">load</text>
+<rect class="b" x="440" y="180" width="126" height="40"><text class="t" x="503" y="205" text-anchor="middle">time</text></rect></rect></rect></rect></rect></p>
+<p><text class="s" x="602" y="64">路径与材质参数分离：</text>
+<text class="s" x="602" y="84">控制点可变，笔刷与颜料仍有稳定身份</text>
+<text class="s" x="602" y="196">所有浮点均为 little-endian float32</text>
+<text class="s" x="602" y="214">坐标 / 宽度按画布归一化</text>
+</p>
+<p>路径与材质字段分开后，同一条曲线可以改变压力和载漆而不重建身份；精修分支也能对连续参数求导，同时保留离散的笔刷、图层和颜料索引。</p>
+<h2 id="落盘格式必须自带校验">落盘格式必须自带校验<a class="anchor" href="#落盘格式必须自带校验"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>落盘格式使用 ZIP，但 ZIP 只承担容器职责。固定内容包括：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">manifest.json</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">strokes.bin</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">points.bin</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">palette/reflectance.bin</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">palette/display-rgb.bin</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">brushes/manifest.json</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">brushes/*.png</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="manifest.jsonstrokes.binpoints.binpalette/reflectance.binpalette/display-rgb.binbrushes/manifest.jsonbrushes/*.png"><div></div></button></div></figure></div>
+<p><code>manifest.json</code> 保存 schema/version、画布与坐标空间、branch、seed、源图 SHA-256、笔触/控制点数量、记录尺寸、调色板维度和单位。除 manifest 本身外，每个文件都记录 SHA-256；读取时逐项重算，不一致就拒绝。</p>
+<p>序列化还固定 ZIP 时间戳、文件权限、文件名排序和 JSON key 顺序。因此相同计划与相同笔刷资产会产生确定的容器字节，而不被当前时间或字典遍历顺序污染。</p>
+<p>反序列化按固定顺序设卡：先检查 schema 名与版本，再校验文件哈希，按 manifest 维度恢复光谱数组，最后重新构造内存记录以触发合同检查。文件完整性和结构合法性是两道独立门禁。</p>
+<h2 id="实时分支的职责是给出确定性起点">实时分支的职责是给出确定性起点<a class="anchor" href="#实时分支的职责是给出确定性起点"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>D3D12 分支把源图依次转换为抽象色、切向方向、边缘、显著性与区域，再按 seed 生成粗、中、细三层笔触。方向场决定路径走向，区域阻隔避免笔触跨越主要边界，压力、宽度和载漆沿控制点变化。</p>
+<p>确定性在这里有两个用途。第一，参数不变时可重复生成同一份基础计划，缓存和回放才有稳定键。第二，精修分支的质量差异来自优化，而不是每次随机规划换了一批笔触。</p>
+<p>笔刷纹理与压力图集也进入计划合同。只保存 <code>brush_id</code> 而不保存笔刷 manifest，会让几年后同一个 id 指向另一份图集；表示因此同时携带笔刷清单，并允许把实际 brush PNG 一起封进容器。</p>
+<h2 id="精修分支只能做有界增量">精修分支只能做有界增量<a class="anchor" href="#精修分支只能做有界增量"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>精修分支要求每根笔触恰好四个控制点，把它解释为三次 Bézier。优化参数不是直接替换原值，而是围绕基础计划建立有界增量：</p>
+<ul>
+<li>控制点位移经 <code>tanh</code> 限制，端点权重更小，避免路径整体漂离目标区域。</li>
+<li>宽度、载漆与厚度按指数比例变化，并钳在基值与全局上下界之间。</li>
+<li>压力、透明度与湿度在 logit 空间平移，输出仍落在 <code>[0, 1]</code>。</li>
+<li>颜料只在原先激活的三个槽位内做 softmax，不在优化中突然换入另一种颜料。</li>
+<li>曲率与全部 delta 进入正则项，阻止优化器用极端折线或异常材质值追逐像素误差。</li>
+</ul>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">基础计划</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">+ bounded delta(xy, width, pressure, load)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">+ bounded delta(pigment, opacity, wetness, thickness)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">-> 精修后计划</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="基础计划  + bounded delta(xy, width, pressure, load)  + bounded delta(pigment, opacity, wetness, thickness)  -> 精修后计划"><div></div></button></div></figure></div>
+<p>多尺度优化按 tile 执行。稠密笔触贡献使用 gradient checkpoint，以重算换显存；检查点路径保存的仍是完整计划文件，任务取消时可以回到最近一个有效计划，而不是只留一份无法解释的优化器张量。</p>
+<p>可微目标包含颜色、结构、方向和多尺度相似度，但它只能改变计划允许表达的参数。离散笔刷类型、图层拓扑和颜料槽身份仍由基础计划决定。这项限制让结果保持可重放，也限制了精修能修正的问题范围。</p>
+<h2 id="光谱颜料在两个分支保持同一语义">光谱颜料在两个分支保持同一语义<a class="anchor" href="#光谱颜料在两个分支保持同一语义"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>颜料表同时保存显示 RGB 与波段反射率。RGB 先转换成受限反射率曲线；混合时不直接平均颜色，而是进入 Kubelka–Munk 的 (K/S) 形式：</p>
+<span class="katex-display"><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mfrac><mi>K</mi><mi>S</mi></mfrac><mo>=</mo><mfrac><mrow><mo stretchy="false">(</mo><mn>1</mn><mo>−</mo><mi>R</mi><msup><mo stretchy="false">)</mo><mn>2</mn></msup></mrow><mrow><mn>2</mn><mi>R</mi></mrow></mfrac></mrow><annotation encoding="application/x-tex">\frac{K}{S} = \frac{(1 - R)^2}{2R}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:2.0463em;vertical-align:-0.686em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.3603em;"><span style="top:-2.314em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0576em;">S</span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0715em;">K</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.686em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:2.1771em;vertical-align:-0.686em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.4911em;"><span style="top:-2.314em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord">2</span><span class="mord mathnormal" style="margin-right:0.0077em;">R</span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mopen">(</span><span class="mord">1</span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mord mathnormal" style="margin-right:0.0077em;">R</span><span class="mclose"><span class="mclose">)</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.686em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span></span></span></span></span>
+<p>各颜料按质量权重混合 (K/S)，再恢复反射率：</p>
+<span class="katex-display"><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mi>R</mi><mo>=</mo><mn>1</mn><mo>+</mo><mfrac><mi>K</mi><mi>S</mi></mfrac><mo>−</mo><msqrt><mrow><msup><mrow><mo fence="true">(</mo><mfrac><mi>K</mi><mi>S</mi></mfrac><mo fence="true">)</mo></mrow><mn>2</mn></msup><mo>+</mo><mn>2</mn><mfrac><mi>K</mi><mi>S</mi></mfrac></mrow></msqrt></mrow><annotation encoding="application/x-tex">R = 1 + \frac{K}{S} - \sqrt{\left(\frac{K}{S}\right)^2 + 2\frac{K}{S}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em;"></span><span class="mord mathnormal" style="margin-right:0.0077em;">R</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:0.7278em;vertical-align:-0.0833em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:2.0463em;vertical-align:-0.686em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.3603em;"><span style="top:-2.314em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0576em;">S</span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0715em;">K</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.686em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:3.04em;vertical-align:-1.0541em;"></span><span class="mord sqrt"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.9859em;"><span class="svg-align" style="top:-5em;"><span class="pstrut" style="height:5em;"></span><span class="mord" style="padding-left:1em;"><span class="minner"><span class="minner"><span class="mopen delimcenter" style="top:0em;"><span class="delimsizing size3">(</span></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.3603em;"><span style="top:-2.314em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0576em;">S</span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0715em;">K</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.686em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mclose delimcenter" style="top:0em;"><span class="delimsizing size3">)</span></span></span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:1.654em;"><span style="top:-3.9029em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mord">2</span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.3603em;"><span style="top:-2.314em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0576em;">S</span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0715em;">K</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.686em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span></span></span><span style="top:-3.9459em;"><span class="pstrut" style="height:5em;"></span><span class="hide-tail" style="min-width:1.02em;height:3.08em;"><svg xmlns="http://www.w3.org/2000/svg" width="400em" height="3.08em" viewBox="0 0 400000 3240" preserveAspectRatio="xMinYMin slice"><path d="M473,2793
+c339.3,-1799.3,509.3,-2700,510,-2702 l0 -0
+c3.3,-7.3,9.3,-11,18,-11 H400000v40H1017.7
+s-90.5,478,-276.2,1466c-185.7,988,-279.5,1483,-281.5,1485c-2,6,-10,9,-24,9
+c-8,0,-12,-0.7,-12,-2c0,-1.3,-5.3,-32,-16,-92c-50.7,-293.3,-119.7,-693.3,-207,-1200
+c0,-1.3,-5.3,8.7,-16,30c-10.7,21.3,-21.3,42.7,-32,64s-16,33,-16,33s-26,-26,-26,-26
+s76,-153,76,-153s77,-151,77,-151c0.7,0.7,35.7,202,105,604c67.3,400.7,102,602.7,104,
+606zM1001 80h400000v40H1017.7z"></path></svg></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:1.0541em;"><span></span></span></span></span></span></span></span></span></span>
+<p>实时分支为带宽和循环上限使用最多 8 个颜料、8 个波段；精修分支可使用 31 波段进行优化。二者的采样精度不同，但共享“每根笔触由最多三种颜料及权重组成、终局按减法颜料模型解释”的语义。</p>
+<p>D3D12 <code>Material</code> Pass 按像素累积颜料质量，再对每个波段计算混合反射率并投影回 RGB。没有颜料质量时使用抽象底色；有颜料时根据覆盖、质量和颜料误差决定真实颜料贡献。这样 underpaint 与笔触沉积的职责保持分开。</p>
+<h2 id="湿度和厚度属于材质状态">湿度和厚度属于材质状态<a class="anchor" href="#湿度和厚度属于材质状态"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>Raster Pass 不只写颜色。画布状态包含覆盖、高度、厚度与湿度，另有方向图与逐颜料质量缓冲。压力与载漆影响沉积和拾色，厚度形成宏观高度，笔刷纹理形成细尺度鬃毛起伏，湿度则进入混合、干燥和高光。</p>
+<p>共享终局由这些状态生成：</p>
+<ul>
+<li>Albedo：抽象底色与 Kubelka–Munk 颜料按覆盖混合。</li>
+<li>Height / Thickness：笔触沉积与拾色后的物质量。</li>
+<li>Normal：平滑高度的宏观梯度加原始高度的鬃毛梯度。</li>
+<li>Roughness：湿度、厚度、覆盖和方向变化共同调制。</li>
+<li>AO：高度邻域的凹陷关系。</li>
+<li>Beauty：非金属 GGX、笔触方向各向异性和湿膜宽高光。</li>
+</ul>
+<p>干燥降饱和发生在颜料沉积和底色混合之后，并同时受覆盖、湿度与非焦点程度影响。它不是对最终 Beauty 做一次全图灰化。湿颜料保留更多颜色，干颜料提高散射；湿膜还降低局部粗糙度并增加一层宽高光。</p>
+<p>这也是共享终局的价值。如果两个后端各自把 <code>wetness=0.7</code> 解释成不同 BRDF，同一份计划仍然不能跨后端比较。现在优化器只决定湿度参数，最终物理外观由同一材质实现解释。</p>
+<h2 id="缓存键必须覆盖行为版本">缓存键必须覆盖行为版本<a class="anchor" href="#缓存键必须覆盖行为版本"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>处理链按阶段缓存：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">ingest -> analysis -> regions -> base_plan -> refined_plan -> paint_state</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="ingest -> analysis -> regions -> base_plan -> refined_plan -> paint_state"><div></div></button></div></figure></div>
+<p>每个参数只失效实际受它影响的阶段。灯光参数属于 <code>paint_state</code>，不应让前面的笔触规划失效；调色板与 seed 则会影响计划。</p>
+<p>还有一项容易遗漏的输入：代码行为本身。分析、材质或规划器公式变化后，即使用户参数完全相同，旧缓存也不再代表当前程序。因此要把一个管线行为版本号纳入相关 key；改变行为而不递增它，会得到“代码已改、画面完全没变”的假诊断。</p>
+<p>缓存不是兼容路径。构建失败、能力不足或合同不符时，不会返回旧阶段结果假装成功。事务化导出也先在临时位置生成全部材质、manifest 与 OilPack，校验字节数和 SHA-256 后才发布；取消任务不暴露半成品。</p>
+<h2 id="验证口径">验证口径<a class="anchor" href="#验证口径"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>这类表示的核心验收是独立回放。已保存的计划重新读取后，通过同一材质终局生成 Beauty；固定验收语料中，原生成结果与独立回放的平均和最大绝对误差均为 <code>0.0</code>。这证明计划包含终局需要的全部图元、颜料与笔刷语义。</p>
+<p>两个后端的性能数字不能直接横比：</p>
+<ul>
+<li>D3D12 峰值通常通过 DXGI 本地显存用量相对基线采样。</li>
+<li>CUDA 优化峰值来自 PyTorch 分配器统计。</li>
+<li>实时分支计时可以关闭缓存和导出，只测生产管线；精修分支还包含多尺度迭代、checkpoint 与进度事件。</li>
+</ul>
+<p>这些数字可以各自判断是否通过目标门槛，不能相减后解释成某后端“多用了多少显存”。跨 API 测量若没有统一观测层，比较结论应停在各自 SLA。</p>
+<h2 id="结论">结论<a class="anchor" href="#结论"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>有界参数化换来可重放，代价是精修只能修正表示已经允许表达的问题。离散的笔刷类型、图层拓扑和颜料槽身份由基础计划决定：如果规划阶段把一片区域的方向场判断错了，精修再怎么压像素误差也纠不回来——那是要改规划器，不是调优化器。判断问题落在哪一侧，本身就是这套分层带来的能力。</p>
+<p>确定性回放的 <code>0.0</code> 误差只覆盖“表示是否完整”，不覆盖“表示是否合适”。它证明终局需要的语义全在计划里，不证明这套笔触参数化足以描述目标画面。</p>
+<p>跨 API 的测量同样有边界。D3D12 与 CUDA 的显存峰值来自两套互不相通的统计口径，各自判断是否越过门槛可以，相减后解释成“某后端多用了多少”不行。没有统一观测层时，比较结论应当停在各自 SLA。</p>
+<p>这套分层可迁移的前提只有两条：中间表示能脱离任一后端独立存在，且材质终局只实现一次。任何一个后端私下补一套自己的近似着色，可归因性立刻失效——此时共享的就又只是一张图片了。</p></path> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-wy3xnbws> <div class="nav-cell" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/33-agent-safe-graph-editing-protocol/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 上一篇
+</span> <span class="nav-title" data-astro-cid-wy3xnbws>让模型写有状态宿主：把不可逆动作拆成可检查的状态转换</span> </a> </div> <div class="nav-cell next" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/31-endfield-character-wetness-shader/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws>
+下一篇 <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8594;</span> </span> <span class="nav-title" data-astro-cid-wy3xnbws>终末地角色湿润 Shader：逐 Draw ABI 与三类材质坐标</span> </a> </div> </nav> </div> </div>  <footer class="micro" data-astro-cid-cymvyra4> <a class="back" href="/blog/minimalist/" data-astro-cid-cymvyra4> <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8592;</span> 返回技术索引 </a> <span class="copy" data-astro-cid-cymvyra4>&copy; 2026 Shrei</span> <span class="colophon" data-astro-cid-cymvyra4>Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div> </body></html> 

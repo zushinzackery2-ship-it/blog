@@ -1,0 +1,148 @@
+<!DOCTYPE html><html lang="zh-CN" data-astro-cid-cymvyra4> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>让模型写有状态宿主：把不可逆动作拆成可检查的状态转换 · Shrei</title><meta name="description" content="给模型读权限和写权限，失败模式完全不同。读的失败是答错了，写的失败是调用成功却留下没人能解释的中间状态。安全性不来自沙箱，而来自四条约束：能力必须运行时发现、参数 schema 必须从执行体派生、干跑无法诚实模拟时必须拒绝、写后差异属于协议而非调用方礼仪。本文用引擎图编辑作证据，也说明协议买不到什么。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/33-agent-safe-graph-editing-protocol/"><meta property="og:title" content="让模型写有状态宿主：把不可逆动作拆成可检查的状态转换 · Shrei"><meta property="og:description" content="给模型读权限和写权限，失败模式完全不同。读的失败是答错了，写的失败是调用成功却留下没人能解释的中间状态。安全性不来自沙箱，而来自四条约束：能力必须运行时发现、参数 schema 必须从执行体派生、干跑无法诚实模拟时必须拒绝、写后差异属于协议而非调用方礼仪。本文用引擎图编辑作证据，也说明协议买不到什么。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/33-agent-safe-graph-editing-protocol/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><!-- 同步主站主题选择：light/dark 显式跟随，auto 或无记录按本地时间。
+             data-theme 取 expressive-code 主题名，同时驱动 light-dark() 色板与代码块配色 --><script>
+            (function () {
+                let stored = null;
+                try {
+                    stored = localStorage.getItem('shrei-theme');
+                } catch (_) {
+                    /* 隐私模式下不可用，按本地时间自动选择 */
+                }
+                const isNight = () => {
+                    const hour = new Date().getHours();
+                    return hour < 6 || hour >= 18;
+                };
+                const themeColor = document.querySelector('[data-theme-color]');
+                const apply = () => {
+                    const dark = stored === 'dark' || (stored !== 'light' && isNight());
+                    document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
+                    if (themeColor) {
+                        themeColor.content = dark ? '#151412' : '#f4f2ec';
+                    }
+                };
+                apply();
+                if (stored !== 'light' && stored !== 'dark') {
+                    const schedule = () => {
+                        const now = new Date();
+                        const next = new Date(now);
+                        if (now.getHours() < 6) {
+                            next.setHours(6, 0, 0, 0);
+                        } else if (now.getHours() < 18) {
+                            next.setHours(18, 0, 0, 0);
+                        } else {
+                            next.setDate(next.getDate() + 1);
+                            next.setHours(6, 0, 0, 0);
+                        }
+                        window.setTimeout(() => {
+                            apply();
+                            schedule();
+                        }, Math.max(1000, next.getTime() - now.getTime()));
+                    };
+                    schedule();
+                }
+            })();
+        </script><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"><style>:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}.topbar[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-cymvyra4]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-cymvyra4]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-cymvyra4]:hover{color:var(--red)}.center[data-astro-cid-cymvyra4]{min-width:0;text-align:center}.to-home[data-astro-cid-cymvyra4]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-cymvyra4]:hover{color:var(--red)}.to-home[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(.25em)}footer[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]{transition:color .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover{color:var(--red)}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(-.25em)}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-cymvyra4]{grid-template-columns:1fr auto}.center[data-astro-cid-cymvyra4]{display:none}footer[data-astro-cid-cymvyra4]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:start}}@media print{.topbar[data-astro-cid-cymvyra4] .to-home[data-astro-cid-cymvyra4],footer[data-astro-cid-cymvyra4]{display:none}}
+</style><link rel="stylesheet" href="/blog/astro/_slug_.Cj97UYPf.css"></head> <body data-astro-cid-cymvyra4> <div class="frame" data-astro-cid-cymvyra4> <div class="topbar micro" data-astro-cid-cymvyra4> <a class="brand" href="/blog/minimalist/" data-astro-cid-cymvyra4>Shrei — Technical Index</a> <div class="center" data-astro-cid-cymvyra4><span class="topbar-category" data-astro-cid-wy3xnbws>MCP 架构</span></div> <a class="to-home" href="/blog/" data-astro-cid-cymvyra4>
+博客主站 <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-wy3xnbws> <p class="category micro" data-astro-cid-wy3xnbws>MCP 架构</p> <h1 data-astro-cid-wy3xnbws> 让模型写有状态宿主：把不可逆动作拆成可检查的状态转换  </h1> <div class="meta micro" data-astro-cid-wy3xnbws> <time datetime="2026-08-21" data-astro-cid-wy3xnbws>2026-08-21</time> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>15 min</span> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>4,388 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span class="tags" data-astro-cid-wy3xnbws>MCP / AI Agent / Protocol Design / Unreal Engine / Graph Editing / Safety</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#检查在前不可逆在后" data-astro-cid-wy3xnbws>检查在前，不可逆在后</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#能力必须运行时发现" data-astro-cid-wy3xnbws>能力必须运行时发现</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#schema-必须从执行体派生" data-astro-cid-wy3xnbws>schema 必须从执行体派生</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#干跑无法诚实模拟时必须拒绝" data-astro-cid-wy3xnbws>干跑无法诚实模拟时必须拒绝</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#写后差异属于协议" data-astro-cid-wy3xnbws>写后差异属于协议</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#目标身份必须是会话状态" data-astro-cid-wy3xnbws>目标身份必须是会话状态</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#协议买不到什么" data-astro-cid-wy3xnbws>协议买不到什么</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+</a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <p>让模型改一份有状态的宿主——引擎资产、IDE 工程、数据库、云控制台——真正危险的不是调用失败。失败会报错，报错能重试。危险的是<strong>调用成功</strong>之后留下一个没人能解释的中间状态：节点建出来了但没连线，参数类型被字符串猜错，写进了另一个同时打开的项目，或者响应太大把上下文淹没、模型下一步只能继续猜。</p>
+<p>这类状态的共同点是不会抛异常。它们要么在几步之后才表现为别的错误，要么根本不表现，只是结果不对。</p>
+<p>所以安全性不来自沙箱——沙箱管的是「能不能做」，这里的问题是「做对了没有」。它来自一条结构性约束：</p>
+<blockquote><p>每一个不可逆动作之前，都必须有一个可检查的动作；并且这个检查在无法诚实完成时必须拒绝，而不是放行。</p></blockquote>
+<p>下面四条是这条约束展开后的具体形态。证据取自一个 Unreal 编辑器的 MCP 桥接实现，但每一条都不依赖引擎这个宿主。</p>
+<hr>
+<h2 id="检查在前不可逆在后">检查在前，不可逆在后<a class="anchor" href="#检查在前不可逆在后"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<svg id="svg-write-gate-chain" viewBox="0 0 760 330" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto" role="img" aria-label="不可逆动作之前的四道检查，与拒绝线之后必须返回的四项结果">
+  <style>
+    #svg-write-gate-chain .b{fill:none;stroke:currentColor;stroke-width:1.4}
+    #svg-write-gate-chain .fill{fill:currentColor;fill-opacity:0.07;stroke:currentColor;stroke-width:1.4}
+    #svg-write-gate-chain .t{fill:currentColor;font-family:sans-serif;font-size:11.5px}
+    #svg-write-gate-chain .s{fill:currentColor;font-family:sans-serif;font-size:10px;opacity:0.82}
+    #svg-write-gate-chain .a{fill:none;stroke:currentColor;stroke-width:1.4;marker-end:url(#gate-arrow)}
+    #svg-write-gate-chain .gate{fill:none;stroke:currentColor;stroke-width:1.3;stroke-dasharray:6 5;opacity:0.7}
+  </style>
+  <defs>
+    <marker id="gate-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="currentColor"></path>
+    </marker>
+  </defs>
+</svg><p><text class="s" x="24" y="20">可检查：无副作用，可反复执行</text></p>
+  <rect class="b" x="24" y="30" width="168" height="56">
+  <text class="t" x="108" y="54" text-anchor="middle">目标身份绑定</text>
+  <text class="s" x="108" y="73" text-anchor="middle">「当前宿主」不是确定指代</text>
+  <rect class="b" x="210" y="30" width="168" height="56">
+  <text class="t" x="294" y="54" text-anchor="middle">能力运行时发现</text>
+  <text class="s" x="294" y="73" text-anchor="middle">注册表有 ≠ 本会话能执行</text>
+  <rect class="b" x="396" y="30" width="168" height="56">
+  <text class="t" x="480" y="54" text-anchor="middle">schema 从执行体派生</text>
+  <text class="s" x="480" y="73" text-anchor="middle">手写必然漂移</text>
+  <rect class="b" x="582" y="30" width="168" height="56">
+  <text class="t" x="666" y="54" text-anchor="middle">计划校验</text>
+  <text class="s" x="666" y="73" text-anchor="middle">查必填与风险，不写状态</text>
+  <path class="a" d="M192 58 H210">
+  <path class="a" d="M378 58 H396">
+  <path class="a" d="M564 58 H582">
+  <path class="gate" d="M24 150 H750">
+  <text class="s" x="380" y="143" text-anchor="middle">拒绝线：检查无法诚实完成时返回错误，而不是放行</text>
+  <path class="a" d="M380 86 V186">
+<p><text class="s" x="24" y="180">不可逆：必须自带可核对的结果</text></p>
+  <rect class="fill" x="24" y="190" width="168" height="56">
+  <text class="t" x="108" y="214" text-anchor="middle">干跑</text>
+  <text class="s" x="108" y="233" text-anchor="middle">模拟不了就拒绝提供</text>
+  <rect class="fill" x="210" y="190" width="168" height="56">
+  <text class="t" x="294" y="214" text-anchor="middle">写入</text>
+  <text class="s" x="294" y="233" text-anchor="middle">类型化 payload</text>
+  <rect class="fill" x="396" y="190" width="168" height="56">
+  <text class="t" x="480" y="214" text-anchor="middle">写后差异与诊断</text>
+  <text class="s" x="480" y="233" text-anchor="middle">改了什么由协议返回</text>
+  <rect class="fill" x="582" y="190" width="168" height="56">
+  <text class="t" x="666" y="214" text-anchor="middle">显式提交</text>
+  <text class="s" x="666" y="233" text-anchor="middle">保存不是写入的副作用</text>
+  <path class="a" d="M192 218 H210">
+  <path class="a" d="M378 218 H396">
+  <path class="a" d="M564 218 H582">
+  <rect class="b" x="24" y="272" width="726" height="42">
+  <text class="s" x="380" y="298" text-anchor="middle">协议挡住的是猜测；宿主语义、版本 ABI 和资产状态仍会失败，那些错误要原样带诊断返回</text>
+
+<p>上半部分全是可以反复执行、不留痕迹的动作，下半部分每一步都改变宿主。分界线的意义不在于「先检查后执行」这句废话，而在于：<strong>当上半部分的某个检查无法诚实完成时，正确的动作是让整条链停下</strong>。下面三节各自是这条原则的一种具体失败。</p>
+<h2 id="能力必须运行时发现">能力必须运行时发现<a class="anchor" href="#能力必须运行时发现"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>代码里注册了一个操作，不等于当前这个会话能执行它。宿主的模块是按进程加载的：某个插件没启用、某个子系统没初始化、某个版本根本没这个功能，注册表都不知道。</p>
+<p>把静态的操作清单直接当成工具列表暴露给模型，等于向它承诺了一批可能不存在的能力。模型据此制定计划，失败发生在执行时——而那时它已经写了一半。</p>
+<p>正确的顺序是：模型先查询<strong>当前实例实际启用</strong>了什么，再取目标操作的参数定义，最后才构造调用。这条查询不能来自本地清单，必须来自宿主自己的回答。</p>
+<p>由此还引出一个只在长期维护里显形的问题：本地合同与宿主实现会各自演进。需要一个专门的比对动作，报告「本地声明有、宿主没有」和「宿主有、本地没声明」两类差异。它不能把缺失的实现「注册出来」，只能报告不一致——但没有它，漂移会以运行时错误的形式随机出现。</p>
+<h2 id="schema-必须从执行体派生">schema 必须从执行体派生<a class="anchor" href="#schema-必须从执行体派生"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>模型最容易犯的错误是猜字段名和枚举值。给它一份 schema 能解决大半，但<strong>手写的 schema 会漂移</strong>：执行体改了参数名，schema 还是旧的，于是模型按 schema 构造出一个必然失败的调用，且错误信息指向宿主而不是指向 schema。</p>
+<p>解法不是「维护得更勤」，是让两者不可能不一致——从类型化包装函数的签名派生 schema：参数名、JSON 类型、枚举取值、必填与默认值全部来自同一份源。改了执行体，schema 自动跟着改。</p>
+<p>同一份派生结果还应当被计划校验复用。这样「模型看到的字段」「校验检查的字段」「执行体接受的字段」是同一个东西，而不是三份需要人工对齐的副本。</p>
+<p>要说清这道校验的边界：它只能拒绝<strong>明显错误</strong>——操作不存在、能力未启用、必填缺失、风险等级不可接受。一个字符串可能格式正确却不是现有资产路径，一个引脚名可能存在却类型不兼容，这些要等宿主的写后诊断。计划校验的准确含义是「在不改变宿主状态的前提下，先拒绝掉能拒绝的」。</p>
+<h2 id="干跑无法诚实模拟时必须拒绝">干跑无法诚实模拟时必须拒绝<a class="anchor" href="#干跑无法诚实模拟时必须拒绝"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>这是四条里最容易做错的一条，因为做错的版本看起来更好用。</p>
+<p>干跑的价值全部建立在「它的通过等于真实执行会通过」上。一旦某类操作无法在不触碰宿主的前提下完整模拟，继续返回「预览成功」就是在制造假证据——调用方会把它当成已验证的计划，然后直接提交。</p>
+<p>具体的失败形态：一批操作里既有「创建节点」又有「连接刚创建的节点」，后者通过一个批内临时标识引用前者。真实执行时宿主会先建出节点、拿到真实 id，再解析引用；干跑时没有宿主参与，这个引用无从解析。</p>
+<p>此时有三种做法，只有一种是对的：</p>
+<ul>
+<li>假装解析成功，返回预览通过——制造假证据，最坏。</li>
+<li>静默跳过无法模拟的操作，只报告其余部分通过——同样是假证据，而且更难发现。</li>
+<li>返回明确的「该组合不支持干跑」，要求把创建与连接拆成两批，或显式承认这次是真实执行。</li>
+</ul>
+<p>第三种看起来最不方便，但它是唯一让调用方知道自己站在哪的做法。</p>
+<p>还有一条常被默认的语义要写清楚：<strong>干跑不等于自动回滚</strong>。它表示这次调用不应提交变更，不表示宿主具备事务能力。能否完整模拟编译、类型检查和资产状态，由具体操作决定，不由这个布尔值决定。</p>
+<h2 id="写后差异属于协议">写后差异属于协议<a class="anchor" href="#写后差异属于协议"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>写操作返回「done」是没有信息量的。模型接下来只有两个选择：重新读取整个宿主状态来确认发生了什么，或者假设成功继续往下写。前者烧掉全部上下文预算，后者把错误累积到更深处。</p>
+<p>所以写操作的返回必须自带：受影响的对象、结构完整性检查、宿主的编译或校验诊断、以及一个可以用来拉取后续增量的令牌。模型据此知道「改了什么」，不必重读。</p>
+<p>这里有两个容易混淆的细节。</p>
+<p><strong>干跑返回的拟建 id 不能被报告为「已改变」。</strong> 否则调用方会以为状态已经变了，跳过真正的执行。</p>
+<p><strong>响应体积的门与能力的门必须分开。</strong> 高密度读取请求（完整图 + 全部节点参数）应当被默认拦下并返回紧凑替代方案，但错误码要说清这是<strong>上下文预算限制</strong>，需要显式确认才继续。如果用「不支持」来回答一个其实支持、只是响应太大的请求，模型会得出宿主没有这个能力的结论，然后绕路去做更糟的事。</p>
+<p>超过阈值的完整响应应当外置成带 TTL 的快照，返回句柄而不是内容。要注意它是<strong>响应的快照，不是新的数据源</strong>：过期后应当返回结构化的「已过期」，而不是回退去重新查询宿主——那会让两次读取之间的状态差异被静默吞掉。</p>
+<h2 id="目标身份必须是会话状态">目标身份必须是会话状态<a class="anchor" href="#目标身份必须是会话状态"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>前面四条都假设「写到哪」是确定的。这个假设经常不成立。</p>
+<p>两个宿主实例同时运行时——两个编辑器、两个数据库连接、两个云账号——「当前那个」不是一个确定的指代。连接成功也不能证明目标正确：两条连接都会成功。</p>
+<p>这类错误的特征是<strong>不报错</strong>。它安静地把变更写到另一个项目，几小时后才以「我明明改了怎么没生效」的形式出现。</p>
+<p>所以实例身份必须进入会话状态，并且每次数据面调用前重新核对：显式选定的目标仍存活就继续用；目标消失就报错要求重新选择，而不是自动挑一个；自动模式下只有唯一实例时才允许重新绑定；多个实例并存又没有选择依据时，<strong>拒绝调用</strong>。</p>
+<p>切换实例后还要清掉按能力缓存的结果——模块能力属于具体进程，不属于这个协议。</p>
+<h2 id="协议买不到什么">协议买不到什么<a class="anchor" href="#协议买不到什么"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>这条链能消除的是猜测，不是风险。三类失败落在它之外。</p>
+<p><strong>宿主语义。</strong> 资产不存在、路径解析到多个对象、图类型与资产类型不匹配、引脚方向不兼容、宿主编译失败、包只读——协议层无法预知这些，只能保证它们以结构化的码、消息和诊断返回。这里最该抵制的诱惑是加一层「失败就重试一次」的兜底：重试会掩盖目标状态，把一次可定位的失败变成长期查不出的偶发问题。</p>
+<p><strong>版本 ABI。</strong> 宿主插件与引擎小版本、编译器和模块 ABI 绑定，跨版本必须重新编译。参数 schema 一致完全不能推出二进制兼容——这两件事在不同的层上。</p>
+<p><strong>权限边界本身。</strong> 协议约束的是调用路径的形状，不是可以做什么。要真正收窄，只能在能力目录里不暴露那些操作：没有任意脚本执行入口，没有任意反射写属性，写权限只开放到已定义的操作集合。这是设计决策，不是协议自动带来的。</p>
+<p>把这三类和前面四条分清楚很重要。前四条挡住的是「模型不知道自己在做什么」，这三类属于「做的事本身可能不成立」——用协议去兜后者，只会让前者也变得不可信。</p></rect></path></path></path></rect></rect></rect></rect></path></path></path></path></path></rect></rect></rect></rect> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-wy3xnbws> <div class="nav-cell" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/34-persistent-code-index-for-agents/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 上一篇
+</span> <span class="nav-title" data-astro-cid-wy3xnbws>面向 Agent 的持久代码索引：快照式增量、符号级读取与置信边界</span> </a> </div> <div class="nav-cell next" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/32-dual-backend-intermediate-representation/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws>
+下一篇 <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8594;</span> </span> <span class="nav-title" data-astro-cid-wy3xnbws>双后端管线的中间表示：确定性起点与有界精修</span> </a> </div> </nav> </div> </div>  <footer class="micro" data-astro-cid-cymvyra4> <a class="back" href="/blog/minimalist/" data-astro-cid-cymvyra4> <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8592;</span> 返回技术索引 </a> <span class="copy" data-astro-cid-cymvyra4>&copy; 2026 Shrei</span> <span class="colophon" data-astro-cid-cymvyra4>Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div> </body></html> 

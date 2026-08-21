@@ -1,0 +1,168 @@
+<!DOCTYPE html><html lang="zh-CN" data-astro-cid-cymvyra4> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>性能数字的口径：为什么几段毫秒不能相加 · Shrei</title><meta name="description" content="终末地公开分享里的「Render Path 约 1ms」经常被转述成「渲染优化到 1ms」，后者几乎总是错的——1ms 只覆盖提交路径，而转述者想表达的是整帧。帧率、模块耗时、候选压缩比、分批开销分别描述管线的不同段落，各自的测试上下文也不同。本文用一组公开分享的数字说明口径怎么被合并、为什么托管层的统计对不上这些毫秒，以及一个没被采纳的方案为什么也要标价。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/38-performance-number-scope/"><meta property="og:title" content="性能数字的口径：为什么几段毫秒不能相加 · Shrei"><meta property="og:description" content="终末地公开分享里的「Render Path 约 1ms」经常被转述成「渲染优化到 1ms」，后者几乎总是错的——1ms 只覆盖提交路径，而转述者想表达的是整帧。帧率、模块耗时、候选压缩比、分批开销分别描述管线的不同段落，各自的测试上下文也不同。本文用一组公开分享的数字说明口径怎么被合并、为什么托管层的统计对不上这些毫秒，以及一个没被采纳的方案为什么也要标价。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/38-performance-number-scope/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><!-- 同步主站主题选择：light/dark 显式跟随，auto 或无记录按本地时间。
+             data-theme 取 expressive-code 主题名，同时驱动 light-dark() 色板与代码块配色 --><script>
+            (function () {
+                let stored = null;
+                try {
+                    stored = localStorage.getItem('shrei-theme');
+                } catch (_) {
+                    /* 隐私模式下不可用，按本地时间自动选择 */
+                }
+                const isNight = () => {
+                    const hour = new Date().getHours();
+                    return hour < 6 || hour >= 18;
+                };
+                const themeColor = document.querySelector('[data-theme-color]');
+                const apply = () => {
+                    const dark = stored === 'dark' || (stored !== 'light' && isNight());
+                    document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
+                    if (themeColor) {
+                        themeColor.content = dark ? '#151412' : '#f4f2ec';
+                    }
+                };
+                apply();
+                if (stored !== 'light' && stored !== 'dark') {
+                    const schedule = () => {
+                        const now = new Date();
+                        const next = new Date(now);
+                        if (now.getHours() < 6) {
+                            next.setHours(6, 0, 0, 0);
+                        } else if (now.getHours() < 18) {
+                            next.setHours(18, 0, 0, 0);
+                        } else {
+                            next.setDate(next.getDate() + 1);
+                            next.setHours(6, 0, 0, 0);
+                        }
+                        window.setTimeout(() => {
+                            apply();
+                            schedule();
+                        }, Math.max(1000, next.getTime() - now.getTime()));
+                    };
+                    schedule();
+                }
+            })();
+        </script><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"><style>:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}.topbar[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-cymvyra4]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-cymvyra4]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-cymvyra4]:hover{color:var(--red)}.center[data-astro-cid-cymvyra4]{min-width:0;text-align:center}.to-home[data-astro-cid-cymvyra4]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-cymvyra4]:hover{color:var(--red)}.to-home[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(.25em)}footer[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]{transition:color .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover{color:var(--red)}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(-.25em)}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-cymvyra4]{grid-template-columns:1fr auto}.center[data-astro-cid-cymvyra4]{display:none}footer[data-astro-cid-cymvyra4]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:start}}@media print{.topbar[data-astro-cid-cymvyra4] .to-home[data-astro-cid-cymvyra4],footer[data-astro-cid-cymvyra4]{display:none}}
+</style><link rel="stylesheet" href="/blog/astro/_slug_.Cj97UYPf.css"></head> <body data-astro-cid-cymvyra4> <div class="frame" data-astro-cid-cymvyra4> <div class="topbar micro" data-astro-cid-cymvyra4> <a class="brand" href="/blog/minimalist/" data-astro-cid-cymvyra4>Shrei — Technical Index</a> <div class="center" data-astro-cid-cymvyra4><span class="topbar-category" data-astro-cid-wy3xnbws>游戏系统设计</span></div> <a class="to-home" href="/blog/" data-astro-cid-cymvyra4>
+博客主站 <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-wy3xnbws> <p class="category micro" data-astro-cid-wy3xnbws>游戏系统设计</p> <h1 data-astro-cid-wy3xnbws> 性能数字的口径：为什么几段毫秒不能相加  </h1> <div class="meta micro" data-astro-cid-wy3xnbws> <time datetime="2026-08-22" data-astro-cid-wy3xnbws>2026-08-22</time> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>11 min</span> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>3,098 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span class="tags" data-astro-cid-wy3xnbws>Performance / Benchmark / Rendering / ECS / Evidence</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#帧率描述整条链不描述模块" data-astro-cid-wy3xnbws>帧率描述整条链，不描述模块</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#1ms-只覆盖提交路径" data-astro-cid-wy3xnbws>1ms 只覆盖提交路径</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#压缩比描述剔除结果不描述提交耗时" data-astro-cid-wy3xnbws>压缩比描述剔除结果，不描述提交耗时</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#把口径写成表" data-astro-cid-wy3xnbws>把口径写成表</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#没被采纳的方案也要标价" data-astro-cid-wy3xnbws>没被采纳的方案也要标价</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#边界" data-astro-cid-wy3xnbws>边界</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+</a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <p>技术分享里的性能数字，被转述一遍之后往往就错了。不是数字错，是<strong>覆盖范围被悄悄换掉</strong>。</p>
+<p>终末地的一次公开分享里出现过这么几组：通用路径稳定不到 30 帧；接入自研 ECS 和原生管线后旗舰机目标 60 帧；Render Path 本身约 1ms。三句话之间没有矛盾，但它们描述的是三个不同的东西——第一句和第二句是整条方案的整帧对比，第三句是单个模块的一段路径。合成一句「渲染优化到 1ms」，就同时改掉了主语和范围。</p>
+<p>这篇不是要复现这些数字——终末地的 IL2CPP 产物里没有对应的计时器，也没有分享里的测试场景。要提炼的是<strong>口径纪律</strong>：一个性能数字必须带着它覆盖的段落一起说，否则它在下一次转述中一定会变形。</p>
+<hr>
+<h2 id="帧率描述整条链不描述模块">帧率描述整条链，不描述模块<a class="anchor" href="#帧率描述整条链不描述模块"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>早期实验套用引擎通用路径，只做简单排序，结果是难以稳定到 30 帧。后来换成一整条链——自研 ECS、连续内存、多线程剔除、一次排序、原生管线——旗舰机目标 60 帧，单帧预算 16.66ms。</p>
+<p>30 到 60 这个提升属于<strong>整条链</strong>。加载、剔除、排序、绑定、跨语言调用各贡献多少，没有分项采样。任何把这个提升归给其中某一项的说法，都是替原材料补了一个它没做的实验。</p>
+<p>16.66ms 也不是某个模块的配额，它是整帧上限，还要分给角色、阴影、后处理和玩法。分享里单独划过一刀：留给 CPU 遮挡和剔除的只有零点几毫秒。软件遮挡本身不是新想法，贵的是把它压进这个预算——深度图构建要和视锥、LOD 并行，图的是线程之间不留空等。</p>
+<svg id="svg-frame-budget-scope" viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto" role="img" aria-label="整帧预算与其中各段的覆盖范围">
+  <style>
+    #svg-frame-budget-scope .b{fill:none;stroke:currentColor;stroke-width:1.4}
+    #svg-frame-budget-scope .fill{fill:currentColor;fill-opacity:0.07;stroke:currentColor;stroke-width:1.4}
+    #svg-frame-budget-scope .t{fill:currentColor;font-family:sans-serif;font-size:11.5px}
+    #svg-frame-budget-scope .s{fill:currentColor;font-family:sans-serif;font-size:10px;opacity:0.82}
+  </style>
+  <rect class="fill" x="20" y="34" width="680" height="44"></rect>
+  <text class="t" x="360" y="61" text-anchor="middle">整帧预算 16.66ms（60 帧目标）</text>
+  <rect class="b" x="20" y="106" width="160" height="54"></rect>
+  <text class="t" x="100" y="130" text-anchor="middle">遮挡 / 剔除</text>
+  <text class="s" x="100" y="148" text-anchor="middle">零点几毫秒</text>
+  <rect class="b" x="192" y="106" width="160" height="54"></rect>
+  <text class="t" x="272" y="130" text-anchor="middle">排序 / 分批</text>
+  <text class="s" x="272" y="148" text-anchor="middle">另计，与下一格不同段</text>
+  <rect class="b" x="364" y="106" width="160" height="54"></rect>
+  <text class="t" x="444" y="130" text-anchor="middle">Render Path</text>
+  <text class="s" x="444" y="148" text-anchor="middle">约 1ms（提交路径）</text>
+  <rect class="b" x="536" y="106" width="164" height="54"></rect>
+  <text class="t" x="618" y="130" text-anchor="middle">角色 / 阴影 / 后处理</text>
+  <text class="s" x="618" y="148" text-anchor="middle">预算的其余部分</text>
+</svg><p><text class="s" x="360" y="188" text-anchor="middle">四格之和不等于 16.66ms：它们的测试上下文不同，不是同一次采样的分解</text>
+</p>
+<p>图里四格并排，但<strong>不能相加</strong>。它们不是一次采样的分解，是不同场景、不同机型下各自给出的案例。并排只是为了标清各自覆盖哪一段。</p>
+<hr>
+<h2 id="1ms-只覆盖提交路径">1ms 只覆盖提交路径<a class="anchor" href="#1ms-只覆盖提交路径"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>原话是：这套架构把两端 Render Path 本身的 CPU 开销压到约 1 毫秒。紧接着有一句补充：这只是其中一个模块，排序和分批另有开销。</p>
+<p>两个限定词都在原文里。「两端」指移动端和 PC 各一份案例，不是所有机型；「本身」把范围锁在提交路径，不含剔除和排序。把 1ms 写成整帧结论，和原文直接冲突——不是过度概括，是与原文相反。</p>
+<p>另一场整理给过分批的数字：Android 约 3ms，PC 约 1ms。<strong>这个 1ms 和上面那个 1ms 不是同一段。</strong> 移动端上分批可能比提交更贵；PC 上两段碰巧都落在 1ms 附近，仍然要分开记。数值相同最容易诱发合并，这里恰好是最该拆开的地方。</p>
+<p>托管层对不上这两段毫秒，因为计时在原生实现里。托管侧能看见的是一份绘制次数统计和一个 GPU 时长取值：</p>
+<div class="expressive-code"><link rel="stylesheet" href="/blog/astro/ec.iz9dg.css"><script type="module" src="/blog/astro/ec.0vx5m.js"></script><figure class="frame"><figcaption class="header"></figcaption><pre data-language="c"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">class DrawCallStatistic</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">{</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">int32_t</span><span style="--0:#E1E4E8;--1:#24292E"> shadowMapCount;</span><span style="--0:#99A0A6;--1:#616972">          // 0x10</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">int32_t</span><span style="--0:#E1E4E8;--1:#24292E"> preDepthCount;</span><span style="--0:#99A0A6;--1:#616972">           // 0x14</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">int32_t</span><span style="--0:#E1E4E8;--1:#24292E"> opaqueGBufferCount;</span><span style="--0:#99A0A6;--1:#616972">      // 0x18</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">int32_t</span><span style="--0:#E1E4E8;--1:#24292E"> opaqueForwardCount;</span><span style="--0:#99A0A6;--1:#616972">      // 0x1C</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">int32_t</span><span style="--0:#E1E4E8;--1:#24292E"> transparentForwardCount;</span><span style="--0:#99A0A6;--1:#616972"> // 0x20</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">8</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">int32_t</span><span style="--0:#E1E4E8;--1:#24292E"> distortionCount;</span><span style="--0:#99A0A6;--1:#616972">         // 0x24</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">9</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">};</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="class DrawCallStatistic{    int32_t shadowMapCount;          // 0x10    int32_t preDepthCount;           // 0x14    int32_t opaqueGBufferCount;      // 0x18    int32_t opaqueForwardCount;      // 0x1C    int32_t transparentForwardCount; // 0x20    int32_t distortionCount;         // 0x24};"><div></div></button></div></figure></div>
+<p>六个字段的语义类别与阴影、PreZ、GBuffer、Forward、透明、扭曲各个 Pass 对齐。但要说清一件事：<strong>当前调用图没有证明每个字段由某个具体的列表句柄累加</strong>。字段名对得上 Pass 分类，不等于计数来源已确认——这和上一篇讲的是同一个问题。</p>
+<p>GPU 时长和路径开关的 getter 都转入原生层，托管统计对象本身只保存次数与采集开关。类型信息里也没有 1ms、3ms、16.66ms 这些常量，没有和分享场景对应的计时器名字。<strong>要毫秒就得自己采样，读不出来。</strong></p>
+<hr>
+<h2 id="压缩比描述剔除结果不描述提交耗时">压缩比描述剔除结果，不描述提交耗时<a class="anchor" href="#压缩比描述剔除结果不描述提交耗时"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>分享给过两组候选到实画的压缩比：某款移动芯片上 50 万候选压到数万；PC 上 60 万压到约 6 万。压缩发生在视锥、LOD、软件遮挡之后，排序之前。</p>
+<p>这两个数字很容易被拿来推「达到 1ms 需要压到多少条」。这个推理不成立：对象复杂度、材质状态、硬件、分辨率、提交模式都会改变每条 draw 的成本。同样的条数在不同材质分布下能差好几倍。</p>
+<p>能确定的只有口径关系——候选数量描述剔除的<strong>结果</strong>，1ms 描述提交的<strong>耗时</strong>，两者之间没有可外推的换算。</p>
+<p>托管层在这里也只能看到一半：剔除前把参数和视角句柄交给原生，建列表时再传标志、光照模式和层掩码，收回一个 <code>u32</code> 句柄。句柄背后有多少条 draw、键上还剩多少对象，托管侧没有计数器。<strong>能看见压缩之前的入口，看不见压缩之后的条数。</strong></p>
+<hr>
+<h2 id="把口径写成表">把口径写成表<a class="anchor" href="#把口径写成表"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>这是最实用的一步：每个数字配一列「不能当成什么」。</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>口径</th><th>数字</th><th>覆盖范围</th><th>不能当成</th></tr></thead><tbody><tr><td>早期通用路径</td><td>稳定不到 30 帧</td><td>引擎通用 Render Path，只做简单排序</td><td>某一次 draw 的耗时</td></tr><tr><td>接上整条链</td><td>旗舰机目标 60 帧</td><td>ECS、连续内存、多线程剔除、一次排序、原生管线一起上</td><td>所有机型的保底帧率</td></tr><tr><td>单帧预算</td><td>16.66ms</td><td>60 帧的整帧上限</td><td>某个模块的配额总和</td></tr><tr><td>CPU 遮挡 / 剔除</td><td>零点几毫秒</td><td>软件遮挡加视锥、LOD</td><td>Render Path</td></tr><tr><td>Render Path</td><td>约 1ms</td><td>移动端与 PC 案例的提交路径本身</td><td>整帧；不含排序和分批</td></tr><tr><td>批处理</td><td>移动端约 3ms，PC 约 1ms</td><td>另一场整理给出的分批开销</td><td>和上一行同一个 1ms</td></tr><tr><td>剔除压缩</td><td>50 万→数万；60 万→约 6 万</td><td>移动芯片与 PC 各一份案例</td><td>提交耗时</td></tr><tr><td>托管绘制统计</td><td>六类次数</td><td>阴影 / PreZ / GBuffer / Forward / 透明 / 扭曲</td><td>1ms 或 3ms</td></tr></tbody></table>
+<p>「不能当成」这一列是表格的重点。只写覆盖范围，读者仍会自己去合并；把常见的误读预先否掉，转述时才不容易走形。</p>
+<p>角色面数一类的资产约束是另一组内容，描述的是场景规模，不是帧时间。它既不能单独解释通用路径的瓶颈，也不能用来推导提交耗时。</p>
+<hr>
+<h2 id="没被采纳的方案也要标价">没被采纳的方案也要标价<a class="anchor" href="#没被采纳的方案也要标价"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>有一笔取舍没进上面的表：用模型去压光照数据和包体，压缩率和工作流都过得去，但运行时解码在部分中低端设备上要持续吃掉 2ms 以上的 GPU，最后没有装上。</p>
+<p>这条值得单独记，因为<strong>否决理由本身是性能信息</strong>。它告诉后来的人：这个方向已经量过，卡在运行时解码的持续成本上——不是没想到，是想到了并且付不起。没有这条，同一个方案会被重新提出、重新实现、重新否决一遍。</p>
+<p>同时这个 2ms 也不能和前面的数字比。它和 Render Path 的 1ms、遮挡的零点几毫秒来自不同模块、不同测试上下文，谈不上「谁更值」。这里能表达的取舍只有一句：持续的运行时解码成本没有被接受。</p>
+<hr>
+<h2 id="边界">边界<a class="anchor" href="#边界"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>这些数字是特定场景、特定机型上的案例，不是可以外推到所有大世界项目的基准。能从静态样本复现的只有三样：口径对应到哪一段路径、六类 draw 怎么数、开关打开后热路径进哪一层。毫秒要自己采。</p>
+<p>真正可迁移的是说法本身：<strong>说帧率时写整条链，说 1ms 时写提交，说压缩比时写剔除，说 3ms 时写分批，说托管统计时写次数。</strong> 混在一句里，缺口不会消失，只会转移到读者的理解里——而那时已经没人能发现它。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-wy3xnbws> <div class="nav-cell" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/30-render-fact-closure-first-divergence/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 上一篇
+</span> <span class="nav-title" data-astro-cid-wy3xnbws>渲染事实闭包：资源版本化、反向切片与首分歧验证</span> </a> </div> <div class="nav-cell next" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/37-field-name-is-not-semantics/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws>
+下一篇 <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8594;</span> </span> <span class="nav-title" data-astro-cid-wy3xnbws>字段名不是语义：读写交叉引用才是最低门槛</span> </a> </div> </nav> </div> </div>  <footer class="micro" data-astro-cid-cymvyra4> <a class="back" href="/blog/minimalist/" data-astro-cid-cymvyra4> <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8592;</span> 返回技术索引 </a> <span class="copy" data-astro-cid-cymvyra4>&copy; 2026 Shrei</span> <span class="colophon" data-astro-cid-cymvyra4>Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div> </body></html> 
