@@ -1,48 +1,70 @@
-<!DOCTYPE html><html lang="zh-CN" data-astro-cid-cymvyra4> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>Thin Facade MCP 工具设计：从 100 个 Operation 到 6 个 Tool · Shrei</title><meta name="description" content="传统 MCP 的上下文压力来自两处：系统提示词中的工具定义 + 对话历史中的 tool result。Thin Facade 通过 6 个 facade 工具 + 内部 operation registry + response mode 控制，让 AI 决定加载什么、返回什么。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/05-mcp-tool-design/"><meta property="og:title" content="Thin Facade MCP 工具设计：从 100 个 Operation 到 6 个 Tool · Shrei"><meta property="og:description" content="传统 MCP 的上下文压力来自两处：系统提示词中的工具定义 + 对话历史中的 tool result。Thin Facade 通过 6 个 facade 工具 + 内部 operation registry + response mode 控制，让 AI 决定加载什么、返回什么。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/05-mcp-tool-design/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><!-- 同步主站主题选择：light/dark 显式跟随，auto 或无记录按本地时间。
-             data-theme 取 expressive-code 主题名，同时驱动 light-dark() 色板与代码块配色 --><script>
-            (function () {
-                let stored = null;
-                try {
-                    stored = localStorage.getItem('shrei-theme');
-                } catch (_) {
-                    /* 隐私模式下不可用，按本地时间自动选择 */
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>Thin Facade MCP 工具设计：从 100 个 Operation 到 6 个 Tool · Shrei</title><meta name="description" content="传统 MCP 的上下文压力来自两处：系统提示词中的工具定义 + 对话历史中的 tool result。Thin Facade 通过 6 个 facade 工具 + 内部 operation registry + response mode 控制，让 AI 决定加载什么、返回什么。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/05-mcp-tool-design/"><meta property="og:title" content="Thin Facade MCP 工具设计：从 100 个 Operation 到 6 个 Tool · Shrei"><meta property="og:description" content="传统 MCP 的上下文压力来自两处：系统提示词中的工具定义 + 对话历史中的 tool result。Thin Facade 通过 6 个 facade 工具 + 内部 operation registry + response mode 控制，让 AI 决定加载什么、返回什么。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/05-mcp-tool-design/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><script>(function(){const dayStartHour = 6;
+const nightStartHour = 18;
+
+    (function ()
+    {
+        let stored = null;
+        try
+        {
+            stored = localStorage.getItem('shrei-theme');
+        }
+        catch (_)
+        {
+            /* 隐私模式下不可用，按本地时间自动选择 */
+        }
+
+        const isNight = () =>
+        {
+            const hour = new Date().getHours();
+            return hour < dayStartHour || hour >= nightStartHour;
+        };
+
+        const themeColor = document.querySelector('[data-theme-color]');
+        const apply = () =>
+        {
+            const dark = stored === 'dark' || (stored !== 'light' && isNight());
+            document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
+            if (themeColor)
+            {
+                themeColor.content = dark ? '#151412' : '#f4f2ec';
+            }
+        };
+
+        apply();
+
+        if (stored !== 'light' && stored !== 'dark')
+        {
+            const schedule = () =>
+            {
+                const now = new Date();
+                const next = new Date(now);
+                if (now.getHours() < dayStartHour)
+                {
+                    next.setHours(dayStartHour, 0, 0, 0);
                 }
-                const isNight = () => {
-                    const hour = new Date().getHours();
-                    return hour < 6 || hour >= 18;
-                };
-                const themeColor = document.querySelector('[data-theme-color]');
-                const apply = () => {
-                    const dark = stored === 'dark' || (stored !== 'light' && isNight());
-                    document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
-                    if (themeColor) {
-                        themeColor.content = dark ? '#151412' : '#f4f2ec';
-                    }
-                };
-                apply();
-                if (stored !== 'light' && stored !== 'dark') {
-                    const schedule = () => {
-                        const now = new Date();
-                        const next = new Date(now);
-                        if (now.getHours() < 6) {
-                            next.setHours(6, 0, 0, 0);
-                        } else if (now.getHours() < 18) {
-                            next.setHours(18, 0, 0, 0);
-                        } else {
-                            next.setDate(next.getDate() + 1);
-                            next.setHours(6, 0, 0, 0);
-                        }
-                        window.setTimeout(() => {
-                            apply();
-                            schedule();
-                        }, Math.max(1000, next.getTime() - now.getTime()));
-                    };
+                else if (now.getHours() < nightStartHour)
+                {
+                    next.setHours(nightStartHour, 0, 0, 0);
+                }
+                else
+                {
+                    next.setDate(next.getDate() + 1);
+                    next.setHours(dayStartHour, 0, 0, 0);
+                }
+
+                window.setTimeout(() =>
+                {
+                    apply();
                     schedule();
-                }
-            })();
-        </script><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"><style>:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}.topbar[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-cymvyra4]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-cymvyra4]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-cymvyra4]:hover{color:var(--red)}.center[data-astro-cid-cymvyra4]{min-width:0;text-align:center}.to-home[data-astro-cid-cymvyra4]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-cymvyra4]:hover{color:var(--red)}.to-home[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(.25em)}footer[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]{transition:color .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover{color:var(--red)}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(-.25em)}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-cymvyra4]{grid-template-columns:1fr auto}.center[data-astro-cid-cymvyra4]{display:none}footer[data-astro-cid-cymvyra4]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:start}}@media print{.topbar[data-astro-cid-cymvyra4] .to-home[data-astro-cid-cymvyra4],footer[data-astro-cid-cymvyra4]{display:none}}
-</style><link rel="stylesheet" href="/blog/astro/_slug_.Cj97UYPf.css"></head> <body data-astro-cid-cymvyra4> <div class="frame" data-astro-cid-cymvyra4> <div class="topbar micro" data-astro-cid-cymvyra4> <a class="brand" href="/blog/minimalist/" data-astro-cid-cymvyra4>Shrei — Technical Index</a> <div class="center" data-astro-cid-cymvyra4><span class="topbar-category" data-astro-cid-wy3xnbws>MCP 架构</span></div> <a class="to-home" href="/blog/" data-astro-cid-cymvyra4>
-博客主站 <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-wy3xnbws> <p class="category micro" data-astro-cid-wy3xnbws>MCP 架构</p> <h1 data-astro-cid-wy3xnbws> Thin Facade MCP 工具设计：从 100 个 Operation 到 6 个 Tool  </h1> <div class="meta micro" data-astro-cid-wy3xnbws> <time datetime="2026-06-03" data-astro-cid-wy3xnbws>2026-06-03</time> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>24 min</span> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>16,493 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span class="tags" data-astro-cid-wy3xnbws>MCP / AI Tools / Architecture / Context Optimization</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#核心想法" data-astro-cid-wy3xnbws>核心想法</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#上下文压力有两个来源" data-astro-cid-wy3xnbws>上下文压力有两个来源</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#两个维度的实际占用" data-astro-cid-wy3xnbws>两个维度的实际占用</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#强制加载与完整返回的共同本质" data-astro-cid-wy3xnbws>强制加载与完整返回的共同本质</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#两个问题强制加载与完整返回" data-astro-cid-wy3xnbws>两个问题：强制加载与完整返回</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#两个方向各自的收敛方式" data-astro-cid-wy3xnbws>两个方向各自的收敛方式</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#优化-1工具定义按需查询" data-astro-cid-wy3xnbws>优化 1：工具定义按需查询</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#优化-2tool-result-按需返回完整数据" data-astro-cid-wy3xnbws>优化 2：tool result 按需返回完整数据</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#双重优化的状态演变表" data-astro-cid-wy3xnbws>双重优化的状态演变表</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#分层结构" data-astro-cid-wy3xnbws>分层结构</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#分层结构-1" data-astro-cid-wy3xnbws>分层结构</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#架构流程图" data-astro-cid-wy3xnbws>架构流程图</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#一次完整调用长什么样" data-astro-cid-wy3xnbws>一次完整调用长什么样</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#场景ai-需要读取一个-ue-资产的元数据" data-astro-cid-wy3xnbws>场景：AI 需要读取一个 UE 资产的元数据</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#返回粒度由调用方声明" data-astro-cid-wy3xnbws>返回粒度由调用方声明</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#response-mode-层级" data-astro-cid-wy3xnbws>Response Mode 层级</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#artifact-机制" data-astro-cid-wy3xnbws>Artifact 机制</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#实际效果" data-astro-cid-wy3xnbws>实际效果</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#能力查询必须分级" data-astro-cid-wy3xnbws>能力查询必须分级</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#安全边界是这套结构的副产品" data-astro-cid-wy3xnbws>安全边界是这套结构的副产品</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#边界" data-astro-cid-wy3xnbws>边界</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+                }, Math.max(1000, next.getTime() - now.getTime()));
+            };
+
+            schedule();
+        }
+    })();
+})();</script><link rel="stylesheet" href="/blog/astro/_slug_.1l8rUkZ0.css"><style>.topbar[data-astro-cid-pfdi42c7]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-pfdi42c7]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-pfdi42c7]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-pfdi42c7]:hover{color:var(--red)}.center[data-astro-cid-pfdi42c7]{min-width:0;text-align:center}.to-home[data-astro-cid-pfdi42c7]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-pfdi42c7] .arrow[data-astro-cid-pfdi42c7]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-pfdi42c7]:hover{color:var(--red)}.to-home[data-astro-cid-pfdi42c7]:hover .arrow[data-astro-cid-pfdi42c7]{transform:translate(.25em)}footer[data-astro-cid-pfdi42c7]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7]{transition:color .14s ease}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7] .arrow[data-astro-cid-pfdi42c7]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7]:hover{color:var(--red)}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7]:hover .arrow[data-astro-cid-pfdi42c7]{transform:translate(-.25em)}footer[data-astro-cid-pfdi42c7] .colophon[data-astro-cid-pfdi42c7]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-pfdi42c7]{grid-template-columns:1fr auto}.center[data-astro-cid-pfdi42c7]{display:none}footer[data-astro-cid-pfdi42c7]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-pfdi42c7] .colophon[data-astro-cid-pfdi42c7]{justify-self:start}}@media print{.topbar[data-astro-cid-pfdi42c7] .to-home[data-astro-cid-pfdi42c7],footer[data-astro-cid-pfdi42c7]{display:none}}:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}
+</style><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"></head> <body> <div class="frame"> <div class="topbar micro"> <a class="brand" href="/blog/minimalist/">Shrei — Technical Index</a> <div class="center"><span class="topbar-category" data-astro-cid-wy3xnbws>MCP 架构</span></div> <a class="to-home" href="/blog/">
+博客主站 <span class="arrow" aria-hidden="true">&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-ldbnljcb> <p class="category micro" data-astro-cid-ldbnljcb>MCP 架构</p> <h1 data-astro-cid-ldbnljcb> Thin Facade MCP 工具设计：从 100 个 Operation 到 6 个 Tool  </h1> <div class="meta micro" data-astro-cid-ldbnljcb> <time datetime="2026-06-03" data-astro-cid-ldbnljcb>2026-06-03</time> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>24 min</span> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>16,493 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span class="tags" data-astro-cid-ldbnljcb>MCP / AI Tools / Architecture / Context Optimization</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#核心想法" data-astro-cid-wy3xnbws>核心想法</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#上下文压力有两个来源" data-astro-cid-wy3xnbws>上下文压力有两个来源</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#两个维度的实际占用" data-astro-cid-wy3xnbws>两个维度的实际占用</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#强制加载与完整返回的共同本质" data-astro-cid-wy3xnbws>强制加载与完整返回的共同本质</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#两个问题强制加载与完整返回" data-astro-cid-wy3xnbws>两个问题：强制加载与完整返回</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#两个方向各自的收敛方式" data-astro-cid-wy3xnbws>两个方向各自的收敛方式</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#优化-1工具定义按需查询" data-astro-cid-wy3xnbws>优化 1：工具定义按需查询</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#优化-2tool-result-按需返回完整数据" data-astro-cid-wy3xnbws>优化 2：tool result 按需返回完整数据</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#双重优化的状态演变表" data-astro-cid-wy3xnbws>双重优化的状态演变表</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#分层结构" data-astro-cid-wy3xnbws>分层结构</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#分层结构-1" data-astro-cid-wy3xnbws>分层结构</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#架构流程图" data-astro-cid-wy3xnbws>架构流程图</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#一次完整调用长什么样" data-astro-cid-wy3xnbws>一次完整调用长什么样</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#场景ai-需要读取一个-ue-资产的元数据" data-astro-cid-wy3xnbws>场景：AI 需要读取一个 UE 资产的元数据</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#返回粒度由调用方声明" data-astro-cid-wy3xnbws>返回粒度由调用方声明</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#response-mode-层级" data-astro-cid-wy3xnbws>Response Mode 层级</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#artifact-机制" data-astro-cid-wy3xnbws>Artifact 机制</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#实际效果" data-astro-cid-wy3xnbws>实际效果</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#能力查询必须分级" data-astro-cid-wy3xnbws>能力查询必须分级</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#安全边界是这套结构的副产品" data-astro-cid-wy3xnbws>安全边界是这套结构的副产品</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#边界" data-astro-cid-wy3xnbws>边界</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
 </a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <blockquote><p>传统 MCP 的上下文压力来自两个维度：系统提示词中被强制加载的工具定义，以及对话历史中累积的完整 tool result。Thin Facade 通过架构设计，让 AI 自己决定要不要加载工具定义、要不要拿完整数据。</p></blockquote>
 <hr>
 <h2 id="核心想法">核心想法<a class="anchor" href="#核心想法"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
@@ -593,6 +615,6 @@
 </ul>
 <p>归根结底，这套设计动的是控制权的归属，而非工具定义的大小或返回数据的压缩。</p>
 <hr>
-<p><em>实践口径：来自 MCP 桥接工具面的架构抽象；重点是 Thin Facade、operation registry、response mode 和 artifact 边界，不绑定具体项目。</em></p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-wy3xnbws> <div class="nav-cell" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/04-vulkan-dxgi-d3d12-swapchain/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 上一篇
-</span> <span class="nav-title" data-astro-cid-wy3xnbws>Vulkan 游戏中 DXGI/D3D12 Swapchain 的来源分析</span> </a> </div> <div class="nav-cell next" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/06-declarative-write-and-diff-token/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws>
-下一篇 <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8594;</span> </span> <span class="nav-title" data-astro-cid-wy3xnbws>写操作的返回合同：让状态留在服务端</span> </a> </div> </nav> </div> </div>  <footer class="micro" data-astro-cid-cymvyra4> <a class="back" href="/blog/minimalist/" data-astro-cid-cymvyra4> <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8592;</span> 返回技术索引 </a> <span class="copy" data-astro-cid-cymvyra4>&copy; 2026 Shrei</span> <span class="colophon" data-astro-cid-cymvyra4>Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div> </body></html> 
+<p><em>实践口径：来自 MCP 桥接工具面的架构抽象；重点是 Thin Facade、operation registry、response mode 和 artifact 边界，不绑定具体项目。</em></p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-u3wiumwa> <div class="nav-cell" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/04-vulkan-dxgi-d3d12-swapchain/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa> <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8592;</span> 上一篇
+</span> <span class="nav-title" data-astro-cid-u3wiumwa>Vulkan 游戏中 DXGI/D3D12 Swapchain 的来源分析</span> </a> </div> <div class="nav-cell next" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/06-declarative-write-and-diff-token/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa>
+下一篇 <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8594;</span> </span> <span class="nav-title" data-astro-cid-u3wiumwa>写操作的返回合同：让状态留在服务端</span> </a> </div> </nav> </div> </div>   <footer class="micro"> <a class="back" href="/blog/minimalist/"> <span class="arrow" aria-hidden="true">&#8592;</span> 返回技术索引 </a> <span class="copy">&copy; 2026 Shrei</span> <span class="colophon">Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div>  </body></html>

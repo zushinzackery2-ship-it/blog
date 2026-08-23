@@ -1,48 +1,70 @@
-<!DOCTYPE html><html lang="zh-CN" data-astro-cid-cymvyra4> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>卡片箔面材质的数据化分层与 GPU 测量 · Shrei</title><meta name="description" content="为每种稀有度复制一份箔面材质，层之间会逐渐分叉：一个 profile 修了彩虹采样，另一个仍用旧公式。相反的结构是只保留一套 WebGL2 ShaderMaterial，稀有度差异全部下沉到数据化的 RarityProfile 与纹理 mask。本文拆解这套分层如何保持可解释，以及调试视图、确定性 seed、色彩空间与 timer query 各自划出的可验证边界。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/35-card-foil-data-driven-material-profile/"><meta property="og:title" content="卡片箔面材质的数据化分层与 GPU 测量 · Shrei"><meta property="og:description" content="为每种稀有度复制一份箔面材质，层之间会逐渐分叉：一个 profile 修了彩虹采样，另一个仍用旧公式。相反的结构是只保留一套 WebGL2 ShaderMaterial，稀有度差异全部下沉到数据化的 RarityProfile 与纹理 mask。本文拆解这套分层如何保持可解释，以及调试视图、确定性 seed、色彩空间与 timer query 各自划出的可验证边界。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/35-card-foil-data-driven-material-profile/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><!-- 同步主站主题选择：light/dark 显式跟随，auto 或无记录按本地时间。
-             data-theme 取 expressive-code 主题名，同时驱动 light-dark() 色板与代码块配色 --><script>
-            (function () {
-                let stored = null;
-                try {
-                    stored = localStorage.getItem('shrei-theme');
-                } catch (_) {
-                    /* 隐私模式下不可用，按本地时间自动选择 */
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>卡片箔面材质的数据化分层与 GPU 测量 · Shrei</title><meta name="description" content="为每种稀有度复制一份箔面材质，层之间会逐渐分叉：一个 profile 修了彩虹采样，另一个仍用旧公式。相反的结构是只保留一套 WebGL2 ShaderMaterial，稀有度差异全部下沉到数据化的 RarityProfile 与纹理 mask。本文拆解这套分层如何保持可解释，以及调试视图、确定性 seed、色彩空间与 timer query 各自划出的可验证边界。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/35-card-foil-data-driven-material-profile/"><meta property="og:title" content="卡片箔面材质的数据化分层与 GPU 测量 · Shrei"><meta property="og:description" content="为每种稀有度复制一份箔面材质，层之间会逐渐分叉：一个 profile 修了彩虹采样，另一个仍用旧公式。相反的结构是只保留一套 WebGL2 ShaderMaterial，稀有度差异全部下沉到数据化的 RarityProfile 与纹理 mask。本文拆解这套分层如何保持可解释，以及调试视图、确定性 seed、色彩空间与 timer query 各自划出的可验证边界。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/35-card-foil-data-driven-material-profile/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><script>(function(){const dayStartHour = 6;
+const nightStartHour = 18;
+
+    (function ()
+    {
+        let stored = null;
+        try
+        {
+            stored = localStorage.getItem('shrei-theme');
+        }
+        catch (_)
+        {
+            /* 隐私模式下不可用，按本地时间自动选择 */
+        }
+
+        const isNight = () =>
+        {
+            const hour = new Date().getHours();
+            return hour < dayStartHour || hour >= nightStartHour;
+        };
+
+        const themeColor = document.querySelector('[data-theme-color]');
+        const apply = () =>
+        {
+            const dark = stored === 'dark' || (stored !== 'light' && isNight());
+            document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
+            if (themeColor)
+            {
+                themeColor.content = dark ? '#151412' : '#f4f2ec';
+            }
+        };
+
+        apply();
+
+        if (stored !== 'light' && stored !== 'dark')
+        {
+            const schedule = () =>
+            {
+                const now = new Date();
+                const next = new Date(now);
+                if (now.getHours() < dayStartHour)
+                {
+                    next.setHours(dayStartHour, 0, 0, 0);
                 }
-                const isNight = () => {
-                    const hour = new Date().getHours();
-                    return hour < 6 || hour >= 18;
-                };
-                const themeColor = document.querySelector('[data-theme-color]');
-                const apply = () => {
-                    const dark = stored === 'dark' || (stored !== 'light' && isNight());
-                    document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
-                    if (themeColor) {
-                        themeColor.content = dark ? '#151412' : '#f4f2ec';
-                    }
-                };
-                apply();
-                if (stored !== 'light' && stored !== 'dark') {
-                    const schedule = () => {
-                        const now = new Date();
-                        const next = new Date(now);
-                        if (now.getHours() < 6) {
-                            next.setHours(6, 0, 0, 0);
-                        } else if (now.getHours() < 18) {
-                            next.setHours(18, 0, 0, 0);
-                        } else {
-                            next.setDate(next.getDate() + 1);
-                            next.setHours(6, 0, 0, 0);
-                        }
-                        window.setTimeout(() => {
-                            apply();
-                            schedule();
-                        }, Math.max(1000, next.getTime() - now.getTime()));
-                    };
+                else if (now.getHours() < nightStartHour)
+                {
+                    next.setHours(nightStartHour, 0, 0, 0);
+                }
+                else
+                {
+                    next.setDate(next.getDate() + 1);
+                    next.setHours(dayStartHour, 0, 0, 0);
+                }
+
+                window.setTimeout(() =>
+                {
+                    apply();
                     schedule();
-                }
-            })();
-        </script><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"><style>:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}.topbar[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-cymvyra4]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-cymvyra4]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-cymvyra4]:hover{color:var(--red)}.center[data-astro-cid-cymvyra4]{min-width:0;text-align:center}.to-home[data-astro-cid-cymvyra4]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-cymvyra4]:hover{color:var(--red)}.to-home[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(.25em)}footer[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]{transition:color .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover{color:var(--red)}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(-.25em)}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-cymvyra4]{grid-template-columns:1fr auto}.center[data-astro-cid-cymvyra4]{display:none}footer[data-astro-cid-cymvyra4]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:start}}@media print{.topbar[data-astro-cid-cymvyra4] .to-home[data-astro-cid-cymvyra4],footer[data-astro-cid-cymvyra4]{display:none}}
-</style><link rel="stylesheet" href="/blog/astro/_slug_.Cj97UYPf.css"></head> <body data-astro-cid-cymvyra4> <div class="frame" data-astro-cid-cymvyra4> <div class="topbar micro" data-astro-cid-cymvyra4> <a class="brand" href="/blog/minimalist/" data-astro-cid-cymvyra4>Shrei — Technical Index</a> <div class="center" data-astro-cid-cymvyra4><span class="topbar-category" data-astro-cid-wy3xnbws>图形渲染</span></div> <a class="to-home" href="/blog/" data-astro-cid-cymvyra4>
-博客主站 <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-wy3xnbws> <p class="category micro" data-astro-cid-wy3xnbws>图形渲染</p> <h1 data-astro-cid-wy3xnbws> 卡片箔面材质的数据化分层与 GPU 测量  </h1> <div class="meta micro" data-astro-cid-wy3xnbws> <time datetime="2026-08-21" data-astro-cid-wy3xnbws>2026-08-21</time> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>14 min</span> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>5,275 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span class="tags" data-astro-cid-wy3xnbws>WebGL2 / GLSL / Shader / Material / Data Driven / GPU Profiling</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#profile-作为材质协议" data-astro-cid-wy3xnbws>Profile 作为材质协议</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#mask-负责哪里发生参数负责发生多强" data-astro-cid-wy3xnbws>Mask 负责“哪里发生”，参数负责“发生多强”</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#统一-lighting-层避免全局加亮" data-astro-cid-wy3xnbws>统一 lighting 层避免“全局加亮”</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#rainbow-lut-负责视角相位" data-astro-cid-wy3xnbws>Rainbow LUT 负责视角相位</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#pattern-与-sparkle-是两个不同尺度" data-astro-cid-wy3xnbws>Pattern 与 Sparkle 是两个不同尺度</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#shard跟随主体的碎闪" data-astro-cid-wy3xnbws>Shard：跟随主体的碎闪</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#quality-只改变计算密度" data-astro-cid-wy3xnbws>Quality 只改变计算密度</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#debug-view-是材质的可观测接口" data-astro-cid-wy3xnbws>Debug view 是材质的可观测接口</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#gpu-timer-query-只在有证据时显示" data-astro-cid-wy3xnbws>GPU timer query 只在有证据时显示</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#跨平台移植保留四份数据" data-astro-cid-wy3xnbws>跨平台移植保留四份数据</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#结论" data-astro-cid-wy3xnbws>结论</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+                }, Math.max(1000, next.getTime() - now.getTime()));
+            };
+
+            schedule();
+        }
+    })();
+})();</script><link rel="stylesheet" href="/blog/astro/_slug_.1l8rUkZ0.css"><style>.topbar[data-astro-cid-pfdi42c7]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-pfdi42c7]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-pfdi42c7]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-pfdi42c7]:hover{color:var(--red)}.center[data-astro-cid-pfdi42c7]{min-width:0;text-align:center}.to-home[data-astro-cid-pfdi42c7]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-pfdi42c7] .arrow[data-astro-cid-pfdi42c7]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-pfdi42c7]:hover{color:var(--red)}.to-home[data-astro-cid-pfdi42c7]:hover .arrow[data-astro-cid-pfdi42c7]{transform:translate(.25em)}footer[data-astro-cid-pfdi42c7]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7]{transition:color .14s ease}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7] .arrow[data-astro-cid-pfdi42c7]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7]:hover{color:var(--red)}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7]:hover .arrow[data-astro-cid-pfdi42c7]{transform:translate(-.25em)}footer[data-astro-cid-pfdi42c7] .colophon[data-astro-cid-pfdi42c7]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-pfdi42c7]{grid-template-columns:1fr auto}.center[data-astro-cid-pfdi42c7]{display:none}footer[data-astro-cid-pfdi42c7]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-pfdi42c7] .colophon[data-astro-cid-pfdi42c7]{justify-self:start}}@media print{.topbar[data-astro-cid-pfdi42c7] .to-home[data-astro-cid-pfdi42c7],footer[data-astro-cid-pfdi42c7]{display:none}}:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}
+</style><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"></head> <body> <div class="frame"> <div class="topbar micro"> <a class="brand" href="/blog/minimalist/">Shrei — Technical Index</a> <div class="center"><span class="topbar-category" data-astro-cid-wy3xnbws>图形渲染</span></div> <a class="to-home" href="/blog/">
+博客主站 <span class="arrow" aria-hidden="true">&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-ldbnljcb> <p class="category micro" data-astro-cid-ldbnljcb>图形渲染</p> <h1 data-astro-cid-ldbnljcb> 卡片箔面材质的数据化分层与 GPU 测量  </h1> <div class="meta micro" data-astro-cid-ldbnljcb> <time datetime="2026-08-21" data-astro-cid-ldbnljcb>2026-08-21</time> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>14 min</span> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>5,275 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span class="tags" data-astro-cid-ldbnljcb>WebGL2 / GLSL / Shader / Material / Data Driven / GPU Profiling</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#profile-作为材质协议" data-astro-cid-wy3xnbws>Profile 作为材质协议</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#mask-负责哪里发生参数负责发生多强" data-astro-cid-wy3xnbws>Mask 负责“哪里发生”，参数负责“发生多强”</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#统一-lighting-层避免全局加亮" data-astro-cid-wy3xnbws>统一 lighting 层避免“全局加亮”</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#rainbow-lut-负责视角相位" data-astro-cid-wy3xnbws>Rainbow LUT 负责视角相位</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#pattern-与-sparkle-是两个不同尺度" data-astro-cid-wy3xnbws>Pattern 与 Sparkle 是两个不同尺度</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#shard跟随主体的碎闪" data-astro-cid-wy3xnbws>Shard：跟随主体的碎闪</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#quality-只改变计算密度" data-astro-cid-wy3xnbws>Quality 只改变计算密度</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#debug-view-是材质的可观测接口" data-astro-cid-wy3xnbws>Debug view 是材质的可观测接口</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#gpu-timer-query-只在有证据时显示" data-astro-cid-wy3xnbws>GPU timer query 只在有证据时显示</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#跨平台移植保留四份数据" data-astro-cid-wy3xnbws>跨平台移植保留四份数据</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#结论" data-astro-cid-wy3xnbws>结论</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
 </a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <p>卡片箔面常见的实现方式是为每种稀有度复制一份材质，再在复制品里调整颜色、纹理和高光。这样视觉变化很快能做出来，但层之间会逐渐分叉：某个 profile 修了彩虹采样，另一个 profile 仍使用旧公式；UI 改了 slider，shader uniform 却没有更新；低质量档静默切换到另一条路径，结果既无法解释也无法测量。</p>
 <p>可行的结构正相反：只有一套 WebGL2 <code>ShaderMaterial</code>，八种稀有度由 <code>RarityProfile</code> 数据驱动。Profile 保存 mask 权重、表面参数、虹彩参数、图案、碎闪、动画、色调与 seed；shader 只负责解释这些数据。下面的字段、调试视图和测量口径取自一个卡牌箔面的实现。</p>
 <p>材质分层顺序固定为：</p>
@@ -260,6 +282,6 @@
 <p>不应把所有层预烘成一张不可解释的颜色噪声。那会丢掉 profile 可调性、debug view 和确定性 seed，也无法验证“普通卡无箔、Ultimate 有浮雕、Starlight 有主体碎闪”这些结构差异。</p>
 <h2 id="结论">结论<a class="anchor" href="#结论"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
 <p>数据化材质把稀有度差异放进可检查的参数边界。统一的 mask、表面、虹彩、pattern、sparkle、shard 和 animation 协议让八个 profile 共享组合顺序；独立 seed、色散、浮雕和 body shard 区域避免不同效果互相污染；debug view 让每层都有可观测输出。</p>
-<p>再加上显式 WebGL2 能力要求与真实 timer query，材质系统同时获得了三种稳定性：视觉层级可解释、跨引擎语义可移植、性能数字不在缺少 GPU 证据时被伪造。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-wy3xnbws> <div class="nav-cell" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/36-subject-field-without-neural-network/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 上一篇
-</span> <span class="nav-title" data-astro-cid-wy3xnbws>无神经网络的主体概率场：边框种子、门控扩散与极性锁</span> </a> </div> <div class="nav-cell next" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/34-persistent-code-index-for-agents/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws>
-下一篇 <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8594;</span> </span> <span class="nav-title" data-astro-cid-wy3xnbws>面向 Agent 的持久代码索引：快照式增量、符号级读取与置信边界</span> </a> </div> </nav> </div> </div>  <footer class="micro" data-astro-cid-cymvyra4> <a class="back" href="/blog/minimalist/" data-astro-cid-cymvyra4> <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8592;</span> 返回技术索引 </a> <span class="copy" data-astro-cid-cymvyra4>&copy; 2026 Shrei</span> <span class="colophon" data-astro-cid-cymvyra4>Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div> </body></html> 
+<p>再加上显式 WebGL2 能力要求与真实 timer query，材质系统同时获得了三种稳定性：视觉层级可解释、跨引擎语义可移植、性能数字不在缺少 GPU 证据时被伪造。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-u3wiumwa> <div class="nav-cell" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/34-persistent-code-index-for-agents/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa> <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8592;</span> 上一篇
+</span> <span class="nav-title" data-astro-cid-u3wiumwa>面向 Agent 的持久代码索引：快照式增量、符号级读取与置信边界</span> </a> </div> <div class="nav-cell next" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/36-subject-field-without-neural-network/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa>
+下一篇 <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8594;</span> </span> <span class="nav-title" data-astro-cid-u3wiumwa>无神经网络的主体概率场：边框种子、门控扩散与极性锁</span> </a> </div> </nav> </div> </div>   <footer class="micro"> <a class="back" href="/blog/minimalist/"> <span class="arrow" aria-hidden="true">&#8592;</span> 返回技术索引 </a> <span class="copy">&copy; 2026 Shrei</span> <span class="colophon">Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div>  </body></html>

@@ -1,48 +1,70 @@
-<!DOCTYPE html><html lang="zh-CN" data-astro-cid-cymvyra4> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>本地桥接的传输选型：Server-First 与按进程命名的管道路由 · Shrei</title><meta name="description" content="标准 stdio 传输假设子进程由客户端拉起，但长期运行的编辑器进程先于客户端存在，且可能同时开着多个。可行的结构是两段式：外层保持 stdio 兼容，内层用按进程 PID 命名的本地管道解决生命周期、实例发现与路由。本文拆解这条链路的职责边界、长度前缀帧协议、多实例绑定与线程模型，并说明命名管道的适用范围。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/13-local-bridge-named-pipe-routing/"><meta property="og:title" content="本地桥接的传输选型：Server-First 与按进程命名的管道路由 · Shrei"><meta property="og:description" content="标准 stdio 传输假设子进程由客户端拉起，但长期运行的编辑器进程先于客户端存在，且可能同时开着多个。可行的结构是两段式：外层保持 stdio 兼容，内层用按进程 PID 命名的本地管道解决生命周期、实例发现与路由。本文拆解这条链路的职责边界、长度前缀帧协议、多实例绑定与线程模型，并说明命名管道的适用范围。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/13-local-bridge-named-pipe-routing/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><!-- 同步主站主题选择：light/dark 显式跟随，auto 或无记录按本地时间。
-             data-theme 取 expressive-code 主题名，同时驱动 light-dark() 色板与代码块配色 --><script>
-            (function () {
-                let stored = null;
-                try {
-                    stored = localStorage.getItem('shrei-theme');
-                } catch (_) {
-                    /* 隐私模式下不可用，按本地时间自动选择 */
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>本地桥接的传输选型：Server-First 与按进程命名的管道路由 · Shrei</title><meta name="description" content="标准 stdio 传输假设子进程由客户端拉起，但长期运行的编辑器进程先于客户端存在，且可能同时开着多个。可行的结构是两段式：外层保持 stdio 兼容，内层用按进程 PID 命名的本地管道解决生命周期、实例发现与路由。本文拆解这条链路的职责边界、长度前缀帧协议、多实例绑定与线程模型，并说明命名管道的适用范围。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/13-local-bridge-named-pipe-routing/"><meta property="og:title" content="本地桥接的传输选型：Server-First 与按进程命名的管道路由 · Shrei"><meta property="og:description" content="标准 stdio 传输假设子进程由客户端拉起，但长期运行的编辑器进程先于客户端存在，且可能同时开着多个。可行的结构是两段式：外层保持 stdio 兼容，内层用按进程 PID 命名的本地管道解决生命周期、实例发现与路由。本文拆解这条链路的职责边界、长度前缀帧协议、多实例绑定与线程模型，并说明命名管道的适用范围。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/13-local-bridge-named-pipe-routing/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><script>(function(){const dayStartHour = 6;
+const nightStartHour = 18;
+
+    (function ()
+    {
+        let stored = null;
+        try
+        {
+            stored = localStorage.getItem('shrei-theme');
+        }
+        catch (_)
+        {
+            /* 隐私模式下不可用，按本地时间自动选择 */
+        }
+
+        const isNight = () =>
+        {
+            const hour = new Date().getHours();
+            return hour < dayStartHour || hour >= nightStartHour;
+        };
+
+        const themeColor = document.querySelector('[data-theme-color]');
+        const apply = () =>
+        {
+            const dark = stored === 'dark' || (stored !== 'light' && isNight());
+            document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
+            if (themeColor)
+            {
+                themeColor.content = dark ? '#151412' : '#f4f2ec';
+            }
+        };
+
+        apply();
+
+        if (stored !== 'light' && stored !== 'dark')
+        {
+            const schedule = () =>
+            {
+                const now = new Date();
+                const next = new Date(now);
+                if (now.getHours() < dayStartHour)
+                {
+                    next.setHours(dayStartHour, 0, 0, 0);
                 }
-                const isNight = () => {
-                    const hour = new Date().getHours();
-                    return hour < 6 || hour >= 18;
-                };
-                const themeColor = document.querySelector('[data-theme-color]');
-                const apply = () => {
-                    const dark = stored === 'dark' || (stored !== 'light' && isNight());
-                    document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
-                    if (themeColor) {
-                        themeColor.content = dark ? '#151412' : '#f4f2ec';
-                    }
-                };
-                apply();
-                if (stored !== 'light' && stored !== 'dark') {
-                    const schedule = () => {
-                        const now = new Date();
-                        const next = new Date(now);
-                        if (now.getHours() < 6) {
-                            next.setHours(6, 0, 0, 0);
-                        } else if (now.getHours() < 18) {
-                            next.setHours(18, 0, 0, 0);
-                        } else {
-                            next.setDate(next.getDate() + 1);
-                            next.setHours(6, 0, 0, 0);
-                        }
-                        window.setTimeout(() => {
-                            apply();
-                            schedule();
-                        }, Math.max(1000, next.getTime() - now.getTime()));
-                    };
+                else if (now.getHours() < nightStartHour)
+                {
+                    next.setHours(nightStartHour, 0, 0, 0);
+                }
+                else
+                {
+                    next.setDate(next.getDate() + 1);
+                    next.setHours(dayStartHour, 0, 0, 0);
+                }
+
+                window.setTimeout(() =>
+                {
+                    apply();
                     schedule();
-                }
-            })();
-        </script><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"><style>:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}.topbar[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-cymvyra4]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-cymvyra4]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-cymvyra4]:hover{color:var(--red)}.center[data-astro-cid-cymvyra4]{min-width:0;text-align:center}.to-home[data-astro-cid-cymvyra4]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-cymvyra4]:hover{color:var(--red)}.to-home[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(.25em)}footer[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]{transition:color .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover{color:var(--red)}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(-.25em)}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-cymvyra4]{grid-template-columns:1fr auto}.center[data-astro-cid-cymvyra4]{display:none}footer[data-astro-cid-cymvyra4]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:start}}@media print{.topbar[data-astro-cid-cymvyra4] .to-home[data-astro-cid-cymvyra4],footer[data-astro-cid-cymvyra4]{display:none}}
-</style><link rel="stylesheet" href="/blog/astro/_slug_.Cj97UYPf.css"></head> <body data-astro-cid-cymvyra4> <div class="frame" data-astro-cid-cymvyra4> <div class="topbar micro" data-astro-cid-cymvyra4> <a class="brand" href="/blog/minimalist/" data-astro-cid-cymvyra4>Shrei — Technical Index</a> <div class="center" data-astro-cid-cymvyra4><span class="topbar-category" data-astro-cid-wy3xnbws>MCP 架构</span></div> <a class="to-home" href="/blog/" data-astro-cid-cymvyra4>
-博客主站 <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-wy3xnbws> <p class="category micro" data-astro-cid-wy3xnbws>MCP 架构</p> <h1 data-astro-cid-wy3xnbws> 本地桥接的传输选型：Server-First 与按进程命名的管道路由  </h1> <div class="meta micro" data-astro-cid-wy3xnbws> <time datetime="2026-06-06" data-astro-cid-wy3xnbws>2026-06-06</time> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>16 min</span> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>3,979 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span class="tags" data-astro-cid-wy3xnbws>MCP / IPC / Named Pipe / Unreal Engine / Server-First</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#选型结论" data-astro-cid-wy3xnbws>选型结论</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#回环-tcp-的成本不在-bind在发现链路" data-astro-cid-wy3xnbws>回环 TCP 的成本不在 bind，在发现链路</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#端口冲突与选择成本" data-astro-cid-wy3xnbws>端口冲突与选择成本</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#性能不是单独成立的选型理由" data-astro-cid-wy3xnbws>性能不是单独成立的选型理由</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#两段传输服务的是两段生命周期" data-astro-cid-wy3xnbws>两段传输服务的是两段生命周期</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#server-first-架构" data-astro-cid-wy3xnbws>Server-First 架构</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#按字节读取就必须显式声明消息边界" data-astro-cid-wy3xnbws>按字节读取就必须显式声明消息边界</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#端点名里带上进程标识命名空间就是实例表" data-astro-cid-wy3xnbws>端点名里带上进程标识，命名空间就是实例表</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#宿主主线程不能被-io-等待占用" data-astro-cid-wy3xnbws>宿主主线程不能被 I/O 等待占用</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#断线不等于事务回滚" data-astro-cid-wy3xnbws>断线不等于事务回滚</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#兼容性由外层网关提供不由内层传输提供" data-astro-cid-wy3xnbws>兼容性由外层网关提供，不由内层传输提供</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#边界" data-astro-cid-wy3xnbws>边界</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+                }, Math.max(1000, next.getTime() - now.getTime()));
+            };
+
+            schedule();
+        }
+    })();
+})();</script><link rel="stylesheet" href="/blog/astro/_slug_.1l8rUkZ0.css"><style>.topbar[data-astro-cid-pfdi42c7]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-pfdi42c7]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-pfdi42c7]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-pfdi42c7]:hover{color:var(--red)}.center[data-astro-cid-pfdi42c7]{min-width:0;text-align:center}.to-home[data-astro-cid-pfdi42c7]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-pfdi42c7] .arrow[data-astro-cid-pfdi42c7]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-pfdi42c7]:hover{color:var(--red)}.to-home[data-astro-cid-pfdi42c7]:hover .arrow[data-astro-cid-pfdi42c7]{transform:translate(.25em)}footer[data-astro-cid-pfdi42c7]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7]{transition:color .14s ease}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7] .arrow[data-astro-cid-pfdi42c7]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7]:hover{color:var(--red)}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7]:hover .arrow[data-astro-cid-pfdi42c7]{transform:translate(-.25em)}footer[data-astro-cid-pfdi42c7] .colophon[data-astro-cid-pfdi42c7]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-pfdi42c7]{grid-template-columns:1fr auto}.center[data-astro-cid-pfdi42c7]{display:none}footer[data-astro-cid-pfdi42c7]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-pfdi42c7] .colophon[data-astro-cid-pfdi42c7]{justify-self:start}}@media print{.topbar[data-astro-cid-pfdi42c7] .to-home[data-astro-cid-pfdi42c7],footer[data-astro-cid-pfdi42c7]{display:none}}:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}
+</style><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"></head> <body> <div class="frame"> <div class="topbar micro"> <a class="brand" href="/blog/minimalist/">Shrei — Technical Index</a> <div class="center"><span class="topbar-category" data-astro-cid-wy3xnbws>MCP 架构</span></div> <a class="to-home" href="/blog/">
+博客主站 <span class="arrow" aria-hidden="true">&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-ldbnljcb> <p class="category micro" data-astro-cid-ldbnljcb>MCP 架构</p> <h1 data-astro-cid-ldbnljcb> 本地桥接的传输选型：Server-First 与按进程命名的管道路由  </h1> <div class="meta micro" data-astro-cid-ldbnljcb> <time datetime="2026-06-06" data-astro-cid-ldbnljcb>2026-06-06</time> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>16 min</span> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>3,979 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span class="tags" data-astro-cid-ldbnljcb>MCP / IPC / Named Pipe / Unreal Engine / Server-First</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#选型结论" data-astro-cid-wy3xnbws>选型结论</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#回环-tcp-的成本不在-bind在发现链路" data-astro-cid-wy3xnbws>回环 TCP 的成本不在 bind，在发现链路</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#端口冲突与选择成本" data-astro-cid-wy3xnbws>端口冲突与选择成本</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#性能不是单独成立的选型理由" data-astro-cid-wy3xnbws>性能不是单独成立的选型理由</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#两段传输服务的是两段生命周期" data-astro-cid-wy3xnbws>两段传输服务的是两段生命周期</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#server-first-架构" data-astro-cid-wy3xnbws>Server-First 架构</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#按字节读取就必须显式声明消息边界" data-astro-cid-wy3xnbws>按字节读取就必须显式声明消息边界</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#端点名里带上进程标识命名空间就是实例表" data-astro-cid-wy3xnbws>端点名里带上进程标识，命名空间就是实例表</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#宿主主线程不能被-io-等待占用" data-astro-cid-wy3xnbws>宿主主线程不能被 I/O 等待占用</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#断线不等于事务回滚" data-astro-cid-wy3xnbws>断线不等于事务回滚</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#兼容性由外层网关提供不由内层传输提供" data-astro-cid-wy3xnbws>兼容性由外层网关提供，不由内层传输提供</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#边界" data-astro-cid-wy3xnbws>边界</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
 </a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <blockquote><p>命名管道不是标准 MCP 传输层的替代品，也不是零开销通道。当前实现保留 MCP 客户端熟悉的 stdio，把命名管道放在 Python 网关与长期运行的 Unreal Editor 插件之间：外层保持兼容，内层解决编辑器生命周期、实例发现和本地路由。</p></blockquote>
 <hr>
 <h2 id="选型结论">选型结论<a class="anchor" href="#选型结论"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
@@ -296,6 +318,6 @@
 <p>这套通信设计的关键不是用命名管道取代 stdio，而是把两种进程关系拆开：MCP Client 与 Python Server 保持标准 stdio；Python Server 与独立运行的 Unreal Editor 使用按 PID 命名的本地桥接。这样既保留通用客户端兼容，也让 Editor 生命周期、多实例发现和会话绑定成为显式结构。</p>
 <p>长度前缀解决消息边界，4 个 pipe worker 提供有限并发槽，所有 UObject operation 则统一回到 GameThread。这个边界也说明方案不能被简单复制到所有重量级工具：其他宿主必须重新实现自己的主线程调度、实例身份和能力合同；非 Windows 平台还需要换成相应的本地 IPC。</p>
 <hr>
-<p><em>Windows 命名管道是当前 UE 桥接实现。Unix Domain Socket 可以复用长度前缀与网关分层思路，但端点发现、权限、并发和宿主线程模型仍需重新设计与验证。</em></p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-wy3xnbws> <div class="nav-cell" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/07-mcp-context-optimization/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 上一篇
-</span> <span class="nav-title" data-astro-cid-wy3xnbws>MCP 上下文优化：数据压缩与按需加载——字典索引文本格式</span> </a> </div> <div class="nav-cell next" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/08-windows-dr-veh-control-flow-tracing/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws>
-下一篇 <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8594;</span> </span> <span class="nav-title" data-astro-cid-wy3xnbws>Windows 控制流追踪：用硬件断点与 VEH 实现基本块级 trace</span> </a> </div> </nav> </div> </div>  <footer class="micro" data-astro-cid-cymvyra4> <a class="back" href="/blog/minimalist/" data-astro-cid-cymvyra4> <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8592;</span> 返回技术索引 </a> <span class="copy" data-astro-cid-cymvyra4>&copy; 2026 Shrei</span> <span class="colophon" data-astro-cid-cymvyra4>Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div> </body></html> 
+<p><em>Windows 命名管道是当前 UE 桥接实现。Unix Domain Socket 可以复用长度前缀与网关分层思路，但端点发现、权限、并发和宿主线程模型仍需重新设计与验证。</em></p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-u3wiumwa> <div class="nav-cell" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/07-mcp-context-optimization/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa> <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8592;</span> 上一篇
+</span> <span class="nav-title" data-astro-cid-u3wiumwa>MCP 上下文优化：数据压缩与按需加载——字典索引文本格式</span> </a> </div> <div class="nav-cell next" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/08-windows-dr-veh-control-flow-tracing/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa>
+下一篇 <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8594;</span> </span> <span class="nav-title" data-astro-cid-u3wiumwa>Windows 控制流追踪：用硬件断点与 VEH 实现基本块级 trace</span> </a> </div> </nav> </div> </div>   <footer class="micro"> <a class="back" href="/blog/minimalist/"> <span class="arrow" aria-hidden="true">&#8592;</span> 返回技术索引 </a> <span class="copy">&copy; 2026 Shrei</span> <span class="colophon">Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div>  </body></html>

@@ -1,48 +1,70 @@
-<!DOCTYPE html><html lang="zh-CN" data-astro-cid-cymvyra4> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>Archetype ECS 的两个边界：渲染提交与流式列补写 · Shrei</title><meta name="description" content="上一篇把这套自研 Archetype ECS 的列存储和查询切分拆开了，正文停在双 World。这一篇接着走列数据的两个边界——出口到 GPU 的渲染提交，入口从磁盘的流式补写。两个边界都有一层可验证的托管 ABI，也都在某个位置沉进不可见的原生层；本文把托管这一侧讲透，并明确标出原生底在哪。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/28-archetype-ecs-render-streaming-boundary/"><meta property="og:title" content="Archetype ECS 的两个边界：渲染提交与流式列补写 · Shrei"><meta property="og:description" content="上一篇把这套自研 Archetype ECS 的列存储和查询切分拆开了，正文停在双 World。这一篇接着走列数据的两个边界——出口到 GPU 的渲染提交，入口从磁盘的流式补写。两个边界都有一层可验证的托管 ABI，也都在某个位置沉进不可见的原生层；本文把托管这一侧讲透，并明确标出原生底在哪。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/28-archetype-ecs-render-streaming-boundary/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><!-- 同步主站主题选择：light/dark 显式跟随，auto 或无记录按本地时间。
-             data-theme 取 expressive-code 主题名，同时驱动 light-dark() 色板与代码块配色 --><script>
-            (function () {
-                let stored = null;
-                try {
-                    stored = localStorage.getItem('shrei-theme');
-                } catch (_) {
-                    /* 隐私模式下不可用，按本地时间自动选择 */
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>Archetype ECS 的两个边界：渲染提交与流式列补写 · Shrei</title><meta name="description" content="上一篇把这套自研 Archetype ECS 的列存储和查询切分拆开了，正文停在双 World。这一篇接着走列数据的两个边界——出口到 GPU 的渲染提交，入口从磁盘的流式补写。两个边界都有一层可验证的托管 ABI，也都在某个位置沉进不可见的原生层；本文把托管这一侧讲透，并明确标出原生底在哪。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/28-archetype-ecs-render-streaming-boundary/"><meta property="og:title" content="Archetype ECS 的两个边界：渲染提交与流式列补写 · Shrei"><meta property="og:description" content="上一篇把这套自研 Archetype ECS 的列存储和查询切分拆开了，正文停在双 World。这一篇接着走列数据的两个边界——出口到 GPU 的渲染提交，入口从磁盘的流式补写。两个边界都有一层可验证的托管 ABI，也都在某个位置沉进不可见的原生层；本文把托管这一侧讲透，并明确标出原生底在哪。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/28-archetype-ecs-render-streaming-boundary/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><script>(function(){const dayStartHour = 6;
+const nightStartHour = 18;
+
+    (function ()
+    {
+        let stored = null;
+        try
+        {
+            stored = localStorage.getItem('shrei-theme');
+        }
+        catch (_)
+        {
+            /* 隐私模式下不可用，按本地时间自动选择 */
+        }
+
+        const isNight = () =>
+        {
+            const hour = new Date().getHours();
+            return hour < dayStartHour || hour >= nightStartHour;
+        };
+
+        const themeColor = document.querySelector('[data-theme-color]');
+        const apply = () =>
+        {
+            const dark = stored === 'dark' || (stored !== 'light' && isNight());
+            document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
+            if (themeColor)
+            {
+                themeColor.content = dark ? '#151412' : '#f4f2ec';
+            }
+        };
+
+        apply();
+
+        if (stored !== 'light' && stored !== 'dark')
+        {
+            const schedule = () =>
+            {
+                const now = new Date();
+                const next = new Date(now);
+                if (now.getHours() < dayStartHour)
+                {
+                    next.setHours(dayStartHour, 0, 0, 0);
                 }
-                const isNight = () => {
-                    const hour = new Date().getHours();
-                    return hour < 6 || hour >= 18;
-                };
-                const themeColor = document.querySelector('[data-theme-color]');
-                const apply = () => {
-                    const dark = stored === 'dark' || (stored !== 'light' && isNight());
-                    document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
-                    if (themeColor) {
-                        themeColor.content = dark ? '#151412' : '#f4f2ec';
-                    }
-                };
-                apply();
-                if (stored !== 'light' && stored !== 'dark') {
-                    const schedule = () => {
-                        const now = new Date();
-                        const next = new Date(now);
-                        if (now.getHours() < 6) {
-                            next.setHours(6, 0, 0, 0);
-                        } else if (now.getHours() < 18) {
-                            next.setHours(18, 0, 0, 0);
-                        } else {
-                            next.setDate(next.getDate() + 1);
-                            next.setHours(6, 0, 0, 0);
-                        }
-                        window.setTimeout(() => {
-                            apply();
-                            schedule();
-                        }, Math.max(1000, next.getTime() - now.getTime()));
-                    };
+                else if (now.getHours() < nightStartHour)
+                {
+                    next.setHours(nightStartHour, 0, 0, 0);
+                }
+                else
+                {
+                    next.setDate(next.getDate() + 1);
+                    next.setHours(dayStartHour, 0, 0, 0);
+                }
+
+                window.setTimeout(() =>
+                {
+                    apply();
                     schedule();
-                }
-            })();
-        </script><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"><style>:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}.topbar[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-cymvyra4]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-cymvyra4]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-cymvyra4]:hover{color:var(--red)}.center[data-astro-cid-cymvyra4]{min-width:0;text-align:center}.to-home[data-astro-cid-cymvyra4]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-cymvyra4]:hover{color:var(--red)}.to-home[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(.25em)}footer[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]{transition:color .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover{color:var(--red)}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(-.25em)}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-cymvyra4]{grid-template-columns:1fr auto}.center[data-astro-cid-cymvyra4]{display:none}footer[data-astro-cid-cymvyra4]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:start}}@media print{.topbar[data-astro-cid-cymvyra4] .to-home[data-astro-cid-cymvyra4],footer[data-astro-cid-cymvyra4]{display:none}}
-</style><link rel="stylesheet" href="/blog/astro/_slug_.Cj97UYPf.css"></head> <body data-astro-cid-cymvyra4> <div class="frame" data-astro-cid-cymvyra4> <div class="topbar micro" data-astro-cid-cymvyra4> <a class="brand" href="/blog/minimalist/" data-astro-cid-cymvyra4>Shrei — Technical Index</a> <div class="center" data-astro-cid-cymvyra4><span class="topbar-category" data-astro-cid-wy3xnbws>游戏系统设计</span></div> <a class="to-home" href="/blog/" data-astro-cid-cymvyra4>
-博客主站 <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-wy3xnbws> <p class="category micro" data-astro-cid-wy3xnbws>游戏系统设计</p> <h1 data-astro-cid-wy3xnbws> Archetype ECS 的两个边界：渲染提交与流式列补写  </h1> <div class="meta micro" data-astro-cid-wy3xnbws> <time datetime="2026-08-20" data-astro-cid-wy3xnbws>2026-08-20</time> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>28 min</span> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>8,087 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span class="tags" data-astro-cid-wy3xnbws>Unity / ECS / Archetype / Rendering / Serialization</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#先说两个边界各自到哪为止" data-astro-cid-wy3xnbws>先说两个边界各自到哪为止</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#渲染出口查询结果与-draw-提交" data-astro-cid-wy3xnbws>渲染出口：查询结果与 draw 提交</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#查询命中还画不了" data-astro-cid-wy3xnbws>查询命中还画不了</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#交给原生的是过滤条件不是键" data-astro-cid-wy3xnbws>交给原生的是过滤条件，不是键</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#pass-只收句柄" data-astro-cid-wy3xnbws>Pass 只收句柄</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#草另走一列" data-astro-cid-wy3xnbws>草另走一列</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#出口到这层为止" data-astro-cid-wy3xnbws>出口到这层为止</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#两个-128-位不是一件事" data-astro-cid-wy3xnbws>两个 128 位不是一件事</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#流式入口磁盘数据到列的补写" data-astro-cid-wy3xnbws>流式入口：磁盘数据到列的补写</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#编号是高低位拼出来的" data-astro-cid-wy3xnbws>编号是高低位拼出来的</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#属性-id-收成一个-u32" data-astro-cid-wy3xnbws>属性 id 收成一个 u32</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#convertfrom-只在三条边上写槽" data-astro-cid-wy3xnbws>ConvertFrom 只在三条边上写槽</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#入口到这层为止" data-astro-cid-wy3xnbws>入口到这层为止</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#两个边界靠-binder-连起来" data-astro-cid-wy3xnbws>两个边界靠 Binder 连起来</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#复盘两个边界的共同形状" data-astro-cid-wy3xnbws>复盘：两个边界的共同形状</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+                }, Math.max(1000, next.getTime() - now.getTime()));
+            };
+
+            schedule();
+        }
+    })();
+})();</script><link rel="stylesheet" href="/blog/astro/_slug_.1l8rUkZ0.css"><style>.topbar[data-astro-cid-pfdi42c7]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-pfdi42c7]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-pfdi42c7]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-pfdi42c7]:hover{color:var(--red)}.center[data-astro-cid-pfdi42c7]{min-width:0;text-align:center}.to-home[data-astro-cid-pfdi42c7]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-pfdi42c7] .arrow[data-astro-cid-pfdi42c7]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-pfdi42c7]:hover{color:var(--red)}.to-home[data-astro-cid-pfdi42c7]:hover .arrow[data-astro-cid-pfdi42c7]{transform:translate(.25em)}footer[data-astro-cid-pfdi42c7]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7]{transition:color .14s ease}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7] .arrow[data-astro-cid-pfdi42c7]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7]:hover{color:var(--red)}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7]:hover .arrow[data-astro-cid-pfdi42c7]{transform:translate(-.25em)}footer[data-astro-cid-pfdi42c7] .colophon[data-astro-cid-pfdi42c7]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-pfdi42c7]{grid-template-columns:1fr auto}.center[data-astro-cid-pfdi42c7]{display:none}footer[data-astro-cid-pfdi42c7]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-pfdi42c7] .colophon[data-astro-cid-pfdi42c7]{justify-self:start}}@media print{.topbar[data-astro-cid-pfdi42c7] .to-home[data-astro-cid-pfdi42c7],footer[data-astro-cid-pfdi42c7]{display:none}}:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}
+</style><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"></head> <body> <div class="frame"> <div class="topbar micro"> <a class="brand" href="/blog/minimalist/">Shrei — Technical Index</a> <div class="center"><span class="topbar-category" data-astro-cid-wy3xnbws>游戏系统设计</span></div> <a class="to-home" href="/blog/">
+博客主站 <span class="arrow" aria-hidden="true">&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-ldbnljcb> <p class="category micro" data-astro-cid-ldbnljcb>游戏系统设计</p> <h1 data-astro-cid-ldbnljcb> Archetype ECS 的两个边界：渲染提交与流式列补写  </h1> <div class="meta micro" data-astro-cid-ldbnljcb> <time datetime="2026-08-20" data-astro-cid-ldbnljcb>2026-08-20</time> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>28 min</span> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>8,087 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span class="tags" data-astro-cid-ldbnljcb>Unity / ECS / Archetype / Rendering / Serialization</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#先说两个边界各自到哪为止" data-astro-cid-wy3xnbws>先说两个边界各自到哪为止</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#渲染出口查询结果与-draw-提交" data-astro-cid-wy3xnbws>渲染出口：查询结果与 draw 提交</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#查询命中还画不了" data-astro-cid-wy3xnbws>查询命中还画不了</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#交给原生的是过滤条件不是键" data-astro-cid-wy3xnbws>交给原生的是过滤条件，不是键</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#pass-只收句柄" data-astro-cid-wy3xnbws>Pass 只收句柄</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#草另走一列" data-astro-cid-wy3xnbws>草另走一列</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#出口到这层为止" data-astro-cid-wy3xnbws>出口到这层为止</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#两个-128-位不是一件事" data-astro-cid-wy3xnbws>两个 128 位不是一件事</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#流式入口磁盘数据到列的补写" data-astro-cid-wy3xnbws>流式入口：磁盘数据到列的补写</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#编号是高低位拼出来的" data-astro-cid-wy3xnbws>编号是高低位拼出来的</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#属性-id-收成一个-u32" data-astro-cid-wy3xnbws>属性 id 收成一个 u32</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#convertfrom-只在三条边上写槽" data-astro-cid-wy3xnbws>ConvertFrom 只在三条边上写槽</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#入口到这层为止" data-astro-cid-wy3xnbws>入口到这层为止</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#两个边界靠-binder-连起来" data-astro-cid-wy3xnbws>两个边界靠 Binder 连起来</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#复盘两个边界的共同形状" data-astro-cid-wy3xnbws>复盘：两个边界的共同形状</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
 </a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <p>上一篇拆的是这套 Archetype ECS 的内部：实体句柄、定长描述符、128 位掩码、查询切分、双 EntityManager。那些是”列怎么存、怎么查”。这一篇讲列的两个边界——列数据怎么出去、怎么进来。</p>
 <p>出去是渲染：查询切出工作区间、Job 把矩阵算新，然后这些列要变成 GPU 上的 draw。进来是流式：磁盘上的预制数据在加载完成的那一刻被写进列。</p>
 <p>两个边界有一个共同形状。托管这一侧都能还原出一套确定的 ABI——结构布局、参数顺序、id 编码、状态边；再往下一层（原生排序提交、原生磁盘解析）都沉进了不可见的实现。本文把托管侧讲清楚，同时在每个边界标出原生底的位置，不把边界之外的东西写成已还原的事实。</p>
@@ -237,6 +259,6 @@
 <p><strong>再往下一层都不可见，而且不可见的恰好是”算法”那部分。</strong> 出口看不到排序键怎么编、怎么排；入口看不到磁盘怎么摆、怎么搬。当前样本呈现的是接口位于跨语言边界、具体实现留在原生侧的分层；它描述这套样本的证据形状，不外推为所有引擎的普遍结构。</p>
 <p><strong>所以边界必须显式声明，而不是用接口去反推实现。</strong> 拿到 <code>u32</code> 句柄不等于还原了排序键；拿到 <code>ConvertFrom</code> 不等于还原了磁盘格式。把能确认的写成确认、把外部材料标成外部材料、把原生底标成原生底，这篇才对得上它的证据等级。</p>
 <p>值得带走的判断有三条：跨语言边界上的参数形状是最可靠的逆向抓手，因为它藏不住；数值相近的偏移（归一化值类型 vs 托管对象绝对布局）要按语义分开，不能按数字并；以及，接口的完整不代表实现的完整，边界之外要留白，不要圆场。</p>
-<p>上一篇是<a href="/blog/posts/22-archetype-ecs-design/">一种有意思的 Archetype ECS 的设计与取舍</a>，讲的是列怎么存、怎么查；这一篇补上列怎么进、怎么出。两篇合起来，覆盖了这套自研 ECS 从存储到边界的可验证部分。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-wy3xnbws> <div class="nav-cell" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/29-code-virtualization-climb-or-bypass/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 上一篇
-</span> <span class="nav-title" data-astro-cid-wy3xnbws>代码虚拟化的判定与兼容复现边界</span> </a> </div> <div class="nav-cell next" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/36-subject-field-without-neural-network/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws>
-下一篇 <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8594;</span> </span> <span class="nav-title" data-astro-cid-wy3xnbws>无神经网络的主体概率场：边框种子、门控扩散与极性锁</span> </a> </div> </nav> </div> </div>  <footer class="micro" data-astro-cid-cymvyra4> <a class="back" href="/blog/minimalist/" data-astro-cid-cymvyra4> <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8592;</span> 返回技术索引 </a> <span class="copy" data-astro-cid-cymvyra4>&copy; 2026 Shrei</span> <span class="colophon" data-astro-cid-cymvyra4>Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div> </body></html> 
+<p>上一篇是<a href="/blog/posts/22-archetype-ecs-design/">一种有意思的 Archetype ECS 的设计与取舍</a>，讲的是列怎么存、怎么查；这一篇补上列怎么进、怎么出。两篇合起来，覆盖了这套自研 ECS 从存储到边界的可验证部分。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-u3wiumwa> <div class="nav-cell" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/27-endfield-vfs-two-layer-analysis/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa> <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8592;</span> 上一篇
+</span> <span class="nav-title" data-astro-cid-u3wiumwa>终末地资源的两层保护：判据、排除矩阵与兼容复现</span> </a> </div> <div class="nav-cell next" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/29-code-virtualization-climb-or-bypass/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa>
+下一篇 <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8594;</span> </span> <span class="nav-title" data-astro-cid-u3wiumwa>代码虚拟化的判定与兼容复现边界</span> </a> </div> </nav> </div> </div>   <footer class="micro"> <a class="back" href="/blog/minimalist/"> <span class="arrow" aria-hidden="true">&#8592;</span> 返回技术索引 </a> <span class="copy">&copy; 2026 Shrei</span> <span class="colophon">Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div>  </body></html>

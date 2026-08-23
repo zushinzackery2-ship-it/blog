@@ -1,48 +1,70 @@
-<!DOCTYPE html><html lang="zh-CN" data-astro-cid-cymvyra4> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>高度场驱动的 WebGL 折射与接缝过渡 · Shrei</title><meta name="description" content="壁纸在水面波动时产生折射扭曲，壁纸和正文之间有一段平滑过渡带而不是硬切。这两个效果都在一个 fragment shader 里完成，靠高度场纹理驱动位移，靠 CSS 变量控制色调。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/20-starlake-wallpaper-refraction-seam/"><meta property="og:title" content="高度场驱动的 WebGL 折射与接缝过渡 · Shrei"><meta property="og:description" content="壁纸在水面波动时产生折射扭曲，壁纸和正文之间有一段平滑过渡带而不是硬切。这两个效果都在一个 fragment shader 里完成，靠高度场纹理驱动位移，靠 CSS 变量控制色调。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/20-starlake-wallpaper-refraction-seam/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><!-- 同步主站主题选择：light/dark 显式跟随，auto 或无记录按本地时间。
-             data-theme 取 expressive-code 主题名，同时驱动 light-dark() 色板与代码块配色 --><script>
-            (function () {
-                let stored = null;
-                try {
-                    stored = localStorage.getItem('shrei-theme');
-                } catch (_) {
-                    /* 隐私模式下不可用，按本地时间自动选择 */
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>高度场驱动的 WebGL 折射与接缝过渡 · Shrei</title><meta name="description" content="壁纸在水面波动时产生折射扭曲，壁纸和正文之间有一段平滑过渡带而不是硬切。这两个效果都在一个 fragment shader 里完成，靠高度场纹理驱动位移，靠 CSS 变量控制色调。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/20-starlake-wallpaper-refraction-seam/"><meta property="og:title" content="高度场驱动的 WebGL 折射与接缝过渡 · Shrei"><meta property="og:description" content="壁纸在水面波动时产生折射扭曲，壁纸和正文之间有一段平滑过渡带而不是硬切。这两个效果都在一个 fragment shader 里完成，靠高度场纹理驱动位移，靠 CSS 变量控制色调。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/20-starlake-wallpaper-refraction-seam/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><script>(function(){const dayStartHour = 6;
+const nightStartHour = 18;
+
+    (function ()
+    {
+        let stored = null;
+        try
+        {
+            stored = localStorage.getItem('shrei-theme');
+        }
+        catch (_)
+        {
+            /* 隐私模式下不可用，按本地时间自动选择 */
+        }
+
+        const isNight = () =>
+        {
+            const hour = new Date().getHours();
+            return hour < dayStartHour || hour >= nightStartHour;
+        };
+
+        const themeColor = document.querySelector('[data-theme-color]');
+        const apply = () =>
+        {
+            const dark = stored === 'dark' || (stored !== 'light' && isNight());
+            document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
+            if (themeColor)
+            {
+                themeColor.content = dark ? '#151412' : '#f4f2ec';
+            }
+        };
+
+        apply();
+
+        if (stored !== 'light' && stored !== 'dark')
+        {
+            const schedule = () =>
+            {
+                const now = new Date();
+                const next = new Date(now);
+                if (now.getHours() < dayStartHour)
+                {
+                    next.setHours(dayStartHour, 0, 0, 0);
                 }
-                const isNight = () => {
-                    const hour = new Date().getHours();
-                    return hour < 6 || hour >= 18;
-                };
-                const themeColor = document.querySelector('[data-theme-color]');
-                const apply = () => {
-                    const dark = stored === 'dark' || (stored !== 'light' && isNight());
-                    document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
-                    if (themeColor) {
-                        themeColor.content = dark ? '#151412' : '#f4f2ec';
-                    }
-                };
-                apply();
-                if (stored !== 'light' && stored !== 'dark') {
-                    const schedule = () => {
-                        const now = new Date();
-                        const next = new Date(now);
-                        if (now.getHours() < 6) {
-                            next.setHours(6, 0, 0, 0);
-                        } else if (now.getHours() < 18) {
-                            next.setHours(18, 0, 0, 0);
-                        } else {
-                            next.setDate(next.getDate() + 1);
-                            next.setHours(6, 0, 0, 0);
-                        }
-                        window.setTimeout(() => {
-                            apply();
-                            schedule();
-                        }, Math.max(1000, next.getTime() - now.getTime()));
-                    };
+                else if (now.getHours() < nightStartHour)
+                {
+                    next.setHours(nightStartHour, 0, 0, 0);
+                }
+                else
+                {
+                    next.setDate(next.getDate() + 1);
+                    next.setHours(dayStartHour, 0, 0, 0);
+                }
+
+                window.setTimeout(() =>
+                {
+                    apply();
                     schedule();
-                }
-            })();
-        </script><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"><style>:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}.topbar[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-cymvyra4]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-cymvyra4]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-cymvyra4]:hover{color:var(--red)}.center[data-astro-cid-cymvyra4]{min-width:0;text-align:center}.to-home[data-astro-cid-cymvyra4]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-cymvyra4]:hover{color:var(--red)}.to-home[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(.25em)}footer[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]{transition:color .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover{color:var(--red)}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(-.25em)}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-cymvyra4]{grid-template-columns:1fr auto}.center[data-astro-cid-cymvyra4]{display:none}footer[data-astro-cid-cymvyra4]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:start}}@media print{.topbar[data-astro-cid-cymvyra4] .to-home[data-astro-cid-cymvyra4],footer[data-astro-cid-cymvyra4]{display:none}}
-</style><link rel="stylesheet" href="/blog/astro/_slug_.Cj97UYPf.css"></head> <body data-astro-cid-cymvyra4> <div class="frame" data-astro-cid-cymvyra4> <div class="topbar micro" data-astro-cid-cymvyra4> <a class="brand" href="/blog/minimalist/" data-astro-cid-cymvyra4>Shrei — Technical Index</a> <div class="center" data-astro-cid-cymvyra4><span class="topbar-category" data-astro-cid-wy3xnbws>图形渲染</span></div> <a class="to-home" href="/blog/" data-astro-cid-cymvyra4>
-博客主站 <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-wy3xnbws> <p class="category micro" data-astro-cid-wy3xnbws>图形渲染</p> <h1 data-astro-cid-wy3xnbws> 高度场驱动的 WebGL 折射与接缝过渡  </h1> <div class="meta micro" data-astro-cid-wy3xnbws> <time datetime="2026-06-20" data-astro-cid-wy3xnbws>2026-06-20</time> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>16 min</span> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>4,676 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span class="tags" data-astro-cid-wy3xnbws>WebGL / GLSL / Shader / Canvas</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#管线总览" data-astro-cid-wy3xnbws>管线总览</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#高度场纹理编码" data-astro-cid-wy3xnbws>高度场纹理编码</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#梯度驱动偏移" data-astro-cid-wy3xnbws>梯度驱动偏移</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#网格折射" data-astro-cid-wy3xnbws>网格折射</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#网格线高亮" data-astro-cid-wy3xnbws>网格线高亮</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#接缝过渡" data-astro-cid-wy3xnbws>接缝过渡</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#一次-draw-call-的边界" data-astro-cid-wy3xnbws>一次 draw call 的边界</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#css-变量驱动的视觉参数" data-astro-cid-wy3xnbws>CSS 变量驱动的视觉参数</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#离屏壁纸与连续动画" data-astro-cid-wy3xnbws>离屏壁纸与连续动画</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#渲染降级" data-astro-cid-wy3xnbws>渲染降级</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+                }, Math.max(1000, next.getTime() - now.getTime()));
+            };
+
+            schedule();
+        }
+    })();
+})();</script><link rel="stylesheet" href="/blog/astro/_slug_.1l8rUkZ0.css"><style>.topbar[data-astro-cid-pfdi42c7]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-pfdi42c7]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-pfdi42c7]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-pfdi42c7]:hover{color:var(--red)}.center[data-astro-cid-pfdi42c7]{min-width:0;text-align:center}.to-home[data-astro-cid-pfdi42c7]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-pfdi42c7] .arrow[data-astro-cid-pfdi42c7]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-pfdi42c7]:hover{color:var(--red)}.to-home[data-astro-cid-pfdi42c7]:hover .arrow[data-astro-cid-pfdi42c7]{transform:translate(.25em)}footer[data-astro-cid-pfdi42c7]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7]{transition:color .14s ease}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7] .arrow[data-astro-cid-pfdi42c7]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7]:hover{color:var(--red)}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7]:hover .arrow[data-astro-cid-pfdi42c7]{transform:translate(-.25em)}footer[data-astro-cid-pfdi42c7] .colophon[data-astro-cid-pfdi42c7]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-pfdi42c7]{grid-template-columns:1fr auto}.center[data-astro-cid-pfdi42c7]{display:none}footer[data-astro-cid-pfdi42c7]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-pfdi42c7] .colophon[data-astro-cid-pfdi42c7]{justify-self:start}}@media print{.topbar[data-astro-cid-pfdi42c7] .to-home[data-astro-cid-pfdi42c7],footer[data-astro-cid-pfdi42c7]{display:none}}:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}
+</style><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"></head> <body> <div class="frame"> <div class="topbar micro"> <a class="brand" href="/blog/minimalist/">Shrei — Technical Index</a> <div class="center"><span class="topbar-category" data-astro-cid-wy3xnbws>图形渲染</span></div> <a class="to-home" href="/blog/">
+博客主站 <span class="arrow" aria-hidden="true">&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-ldbnljcb> <p class="category micro" data-astro-cid-ldbnljcb>图形渲染</p> <h1 data-astro-cid-ldbnljcb> 高度场驱动的 WebGL 折射与接缝过渡  </h1> <div class="meta micro" data-astro-cid-ldbnljcb> <time datetime="2026-06-20" data-astro-cid-ldbnljcb>2026-06-20</time> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>16 min</span> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>4,676 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span class="tags" data-astro-cid-ldbnljcb>WebGL / GLSL / Shader / Canvas</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#管线总览" data-astro-cid-wy3xnbws>管线总览</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#高度场纹理编码" data-astro-cid-wy3xnbws>高度场纹理编码</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#梯度驱动偏移" data-astro-cid-wy3xnbws>梯度驱动偏移</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#网格折射" data-astro-cid-wy3xnbws>网格折射</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#网格线高亮" data-astro-cid-wy3xnbws>网格线高亮</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#接缝过渡" data-astro-cid-wy3xnbws>接缝过渡</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#一次-draw-call-的边界" data-astro-cid-wy3xnbws>一次 draw call 的边界</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#css-变量驱动的视觉参数" data-astro-cid-wy3xnbws>CSS 变量驱动的视觉参数</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#离屏壁纸与连续动画" data-astro-cid-wy3xnbws>离屏壁纸与连续动画</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#渲染降级" data-astro-cid-wy3xnbws>渲染降级</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
 </a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <blockquote><p>壁纸折射不是在 CPU 端逐像素偏移再绘制，而是把视口附近的高度场切片编码成纹理，交给 WebGL fragment shader 计算采样偏移。接缝过渡在 shader 里用 <code>smoothstep</code> 混合预生成纹理；纹理不可用时则生成同语义的程序化过渡。WebGL 壁纸层只提交一个全屏四边形，但完整背景还包含波场推进、纹理编码和多层 Canvas 绘制。</p></blockquote>
 <hr>
 <h2 id="管线总览">管线总览<a class="anchor" href="#管线总览"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
@@ -176,6 +198,6 @@
 <p>如果 WebGL 不可用（老浏览器或 context 创建失败），回退到纯 Canvas 2D 渲染。回退路径不在 Canvas 上做真正的折射偏移，而是在壁纸区域按高度场梯度画短线段来暗示水面波动：</p>
 <div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">线段方向垂直于梯度方向</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">线段长度和透明度由梯度大小控制</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="线段方向垂直于梯度方向线段长度和透明度由梯度大小控制"><div></div></button></div></figure></div>
 <p>效果远不如 WebGL 的折射自然，但至少能看出水面在动。</p>
-<p>这种设计的关键在于模拟层不关心输出最终是被 WebGL shader 读还是被 Canvas 2D 画线段读——模拟和渲染之间没有耦合。加新的渲染方式不需要修改模拟代码，只需要读高度场数组和梯度接口即可。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-wy3xnbws> <div class="nav-cell" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/19-starlake-wavefield-fluid-sim/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 上一篇
-</span> <span class="nav-title" data-astro-cid-wy3xnbws>二维波动方程的数值模拟：Canvas 上的水面高度场</span> </a> </div> <div class="nav-cell next" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/21-sinisistar2-ab-decryption/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws>
-下一篇 <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8594;</span> </span> <span class="nav-title" data-astro-cid-wy3xnbws>SiNiSistar 2 资源加密逆向：Rijndael-256-CBC 的完整解密链路</span> </a> </div> </nav> </div> </div>  <footer class="micro" data-astro-cid-cymvyra4> <a class="back" href="/blog/minimalist/" data-astro-cid-cymvyra4> <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8592;</span> 返回技术索引 </a> <span class="copy" data-astro-cid-cymvyra4>&copy; 2026 Shrei</span> <span class="colophon" data-astro-cid-cymvyra4>Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div> </body></html> 
+<p>这种设计的关键在于模拟层不关心输出最终是被 WebGL shader 读还是被 Canvas 2D 画线段读——模拟和渲染之间没有耦合。加新的渲染方式不需要修改模拟代码，只需要读高度场数组和梯度接口即可。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-u3wiumwa> <div class="nav-cell" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/19-starlake-wavefield-fluid-sim/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa> <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8592;</span> 上一篇
+</span> <span class="nav-title" data-astro-cid-u3wiumwa>二维波动方程的数值模拟：Canvas 上的水面高度场</span> </a> </div> <div class="nav-cell next" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/21-sinisistar2-ab-decryption/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa>
+下一篇 <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8594;</span> </span> <span class="nav-title" data-astro-cid-u3wiumwa>SiNiSistar 2 资源加密逆向：Rijndael-256-CBC 的完整解密链路</span> </a> </div> </nav> </div> </div>   <footer class="micro"> <a class="back" href="/blog/minimalist/"> <span class="arrow" aria-hidden="true">&#8592;</span> 返回技术索引 </a> <span class="copy">&copy; 2026 Shrei</span> <span class="colophon">Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div>  </body></html>

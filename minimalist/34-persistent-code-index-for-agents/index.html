@@ -1,48 +1,70 @@
-<!DOCTYPE html><html lang="zh-CN" data-astro-cid-cymvyra4> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>面向 Agent 的持久代码索引：快照式增量、符号级读取与置信边界 · Shrei</title><meta name="description" content="Agent 反复扫盘和读取整文件会消耗上下文，也无法稳定处理引用关系。把文件、符号、import、调用图和质量元数据写进持久数据库，冷启动复用已有索引、文件事件只重算受影响记录，导航就能降到「一个定义加一圈影响面」。本文拆解快照式增量为什么必须优于逐事件更新、三类搜索各自的成本曲线，以及静态索引在动态语言与生成代码上的语义边界。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/34-persistent-code-index-for-agents/"><meta property="og:title" content="面向 Agent 的持久代码索引：快照式增量、符号级读取与置信边界 · Shrei"><meta property="og:description" content="Agent 反复扫盘和读取整文件会消耗上下文，也无法稳定处理引用关系。把文件、符号、import、调用图和质量元数据写进持久数据库，冷启动复用已有索引、文件事件只重算受影响记录，导航就能降到「一个定义加一圈影响面」。本文拆解快照式增量为什么必须优于逐事件更新、三类搜索各自的成本曲线，以及静态索引在动态语言与生成代码上的语义边界。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/34-persistent-code-index-for-agents/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><!-- 同步主站主题选择：light/dark 显式跟随，auto 或无记录按本地时间。
-             data-theme 取 expressive-code 主题名，同时驱动 light-dark() 色板与代码块配色 --><script>
-            (function () {
-                let stored = null;
-                try {
-                    stored = localStorage.getItem('shrei-theme');
-                } catch (_) {
-                    /* 隐私模式下不可用，按本地时间自动选择 */
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>面向 Agent 的持久代码索引：快照式增量、符号级读取与置信边界 · Shrei</title><meta name="description" content="Agent 反复扫盘和读取整文件会消耗上下文，也无法稳定处理引用关系。把文件、符号、import、调用图和质量元数据写进持久数据库，冷启动复用已有索引、文件事件只重算受影响记录，导航就能降到「一个定义加一圈影响面」。本文拆解快照式增量为什么必须优于逐事件更新、三类搜索各自的成本曲线，以及静态索引在动态语言与生成代码上的语义边界。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/34-persistent-code-index-for-agents/"><meta property="og:title" content="面向 Agent 的持久代码索引：快照式增量、符号级读取与置信边界 · Shrei"><meta property="og:description" content="Agent 反复扫盘和读取整文件会消耗上下文，也无法稳定处理引用关系。把文件、符号、import、调用图和质量元数据写进持久数据库，冷启动复用已有索引、文件事件只重算受影响记录，导航就能降到「一个定义加一圈影响面」。本文拆解快照式增量为什么必须优于逐事件更新、三类搜索各自的成本曲线，以及静态索引在动态语言与生成代码上的语义边界。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/34-persistent-code-index-for-agents/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><script>(function(){const dayStartHour = 6;
+const nightStartHour = 18;
+
+    (function ()
+    {
+        let stored = null;
+        try
+        {
+            stored = localStorage.getItem('shrei-theme');
+        }
+        catch (_)
+        {
+            /* 隐私模式下不可用，按本地时间自动选择 */
+        }
+
+        const isNight = () =>
+        {
+            const hour = new Date().getHours();
+            return hour < dayStartHour || hour >= nightStartHour;
+        };
+
+        const themeColor = document.querySelector('[data-theme-color]');
+        const apply = () =>
+        {
+            const dark = stored === 'dark' || (stored !== 'light' && isNight());
+            document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
+            if (themeColor)
+            {
+                themeColor.content = dark ? '#151412' : '#f4f2ec';
+            }
+        };
+
+        apply();
+
+        if (stored !== 'light' && stored !== 'dark')
+        {
+            const schedule = () =>
+            {
+                const now = new Date();
+                const next = new Date(now);
+                if (now.getHours() < dayStartHour)
+                {
+                    next.setHours(dayStartHour, 0, 0, 0);
                 }
-                const isNight = () => {
-                    const hour = new Date().getHours();
-                    return hour < 6 || hour >= 18;
-                };
-                const themeColor = document.querySelector('[data-theme-color]');
-                const apply = () => {
-                    const dark = stored === 'dark' || (stored !== 'light' && isNight());
-                    document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
-                    if (themeColor) {
-                        themeColor.content = dark ? '#151412' : '#f4f2ec';
-                    }
-                };
-                apply();
-                if (stored !== 'light' && stored !== 'dark') {
-                    const schedule = () => {
-                        const now = new Date();
-                        const next = new Date(now);
-                        if (now.getHours() < 6) {
-                            next.setHours(6, 0, 0, 0);
-                        } else if (now.getHours() < 18) {
-                            next.setHours(18, 0, 0, 0);
-                        } else {
-                            next.setDate(next.getDate() + 1);
-                            next.setHours(6, 0, 0, 0);
-                        }
-                        window.setTimeout(() => {
-                            apply();
-                            schedule();
-                        }, Math.max(1000, next.getTime() - now.getTime()));
-                    };
+                else if (now.getHours() < nightStartHour)
+                {
+                    next.setHours(nightStartHour, 0, 0, 0);
+                }
+                else
+                {
+                    next.setDate(next.getDate() + 1);
+                    next.setHours(dayStartHour, 0, 0, 0);
+                }
+
+                window.setTimeout(() =>
+                {
+                    apply();
                     schedule();
-                }
-            })();
-        </script><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"><style>:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}.topbar[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-cymvyra4]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-cymvyra4]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-cymvyra4]:hover{color:var(--red)}.center[data-astro-cid-cymvyra4]{min-width:0;text-align:center}.to-home[data-astro-cid-cymvyra4]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-cymvyra4]:hover{color:var(--red)}.to-home[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(.25em)}footer[data-astro-cid-cymvyra4]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]{transition:color .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4] .arrow[data-astro-cid-cymvyra4]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover{color:var(--red)}footer[data-astro-cid-cymvyra4] .back[data-astro-cid-cymvyra4]:hover .arrow[data-astro-cid-cymvyra4]{transform:translate(-.25em)}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-cymvyra4]{grid-template-columns:1fr auto}.center[data-astro-cid-cymvyra4]{display:none}footer[data-astro-cid-cymvyra4]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-cymvyra4] .colophon[data-astro-cid-cymvyra4]{justify-self:start}}@media print{.topbar[data-astro-cid-cymvyra4] .to-home[data-astro-cid-cymvyra4],footer[data-astro-cid-cymvyra4]{display:none}}
-</style><link rel="stylesheet" href="/blog/astro/_slug_.Cj97UYPf.css"></head> <body data-astro-cid-cymvyra4> <div class="frame" data-astro-cid-cymvyra4> <div class="topbar micro" data-astro-cid-cymvyra4> <a class="brand" href="/blog/minimalist/" data-astro-cid-cymvyra4>Shrei — Technical Index</a> <div class="center" data-astro-cid-cymvyra4><span class="topbar-category" data-astro-cid-wy3xnbws>MCP 架构</span></div> <a class="to-home" href="/blog/" data-astro-cid-cymvyra4>
-博客主站 <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-wy3xnbws> <p class="category micro" data-astro-cid-wy3xnbws>MCP 架构</p> <h1 data-astro-cid-wy3xnbws> 面向 Agent 的持久代码索引：快照式增量、符号级读取与置信边界  </h1> <div class="meta micro" data-astro-cid-wy3xnbws> <time datetime="2026-08-21" data-astro-cid-wy3xnbws>2026-08-21</time> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>19 min</span> <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span data-astro-cid-wy3xnbws>5,613 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-wy3xnbws></span> <span class="tags" data-astro-cid-wy3xnbws>AI Agent / MCP / Code Index / SQLite / Incremental Build / Developer Tools</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#索引把源码拆成几种可复用事实" data-astro-cid-wy3xnbws>索引把源码拆成几种可复用事实</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#冷启动先绑定根目录再复用状态" data-astro-cid-wy3xnbws>冷启动先绑定根目录，再复用状态</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#父工作区只挂接子索引" data-astro-cid-wy3xnbws>父工作区只挂接子索引</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#增量更新依赖快照而非单个事件" data-astro-cid-wy3xnbws>增量更新依赖快照而非单个事件</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#文件导航与符号导航是两条成本曲线" data-astro-cid-wy3xnbws>文件导航与符号导航是两条成本曲线</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#路径容错只做归一化与候选提示" data-astro-cid-wy3xnbws>路径容错只做归一化与候选提示</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#词法符号和语义搜索有不同职责" data-astro-cid-wy3xnbws>词法、符号和语义搜索有不同职责</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#持久状态需要生命周期协议" data-astro-cid-wy3xnbws>持久状态需要生命周期协议</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#质量检查输出置信边界" data-astro-cid-wy3xnbws>质量检查输出置信边界</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#索引的语义边界" data-astro-cid-wy3xnbws>索引的语义边界</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#与返回压缩协议的边界" data-astro-cid-wy3xnbws>与返回压缩协议的边界</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#结论" data-astro-cid-wy3xnbws>结论</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+                }, Math.max(1000, next.getTime() - now.getTime()));
+            };
+
+            schedule();
+        }
+    })();
+})();</script><link rel="stylesheet" href="/blog/astro/_slug_.1l8rUkZ0.css"><style>.topbar[data-astro-cid-pfdi42c7]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.brand[data-astro-cid-pfdi42c7]{justify-self:start;transition:color .14s ease}.brand[data-astro-cid-pfdi42c7]:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.brand[data-astro-cid-pfdi42c7]:hover{color:var(--red)}.center[data-astro-cid-pfdi42c7]{min-width:0;text-align:center}.to-home[data-astro-cid-pfdi42c7]{justify-self:end;transition:color .14s ease}.to-home[data-astro-cid-pfdi42c7] .arrow[data-astro-cid-pfdi42c7]{display:inline-block;transition:transform .14s ease}.to-home[data-astro-cid-pfdi42c7]:hover{color:var(--red)}.to-home[data-astro-cid-pfdi42c7]:hover .arrow[data-astro-cid-pfdi42c7]{transform:translate(.25em)}footer[data-astro-cid-pfdi42c7]{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7]{transition:color .14s ease}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7] .arrow[data-astro-cid-pfdi42c7]{display:inline-block;transition:transform .14s ease}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7]:hover{color:var(--red)}footer[data-astro-cid-pfdi42c7] .back[data-astro-cid-pfdi42c7]:hover .arrow[data-astro-cid-pfdi42c7]{transform:translate(-.25em)}footer[data-astro-cid-pfdi42c7] .colophon[data-astro-cid-pfdi42c7]{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.topbar[data-astro-cid-pfdi42c7]{grid-template-columns:1fr auto}.center[data-astro-cid-pfdi42c7]{display:none}footer[data-astro-cid-pfdi42c7]{grid-template-columns:1fr;gap:.4rem}footer[data-astro-cid-pfdi42c7] .colophon[data-astro-cid-pfdi42c7]{justify-self:start}}@media print{.topbar[data-astro-cid-pfdi42c7] .to-home[data-astro-cid-pfdi42c7],footer[data-astro-cid-pfdi42c7]{display:none}}:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}
+</style><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"></head> <body> <div class="frame"> <div class="topbar micro"> <a class="brand" href="/blog/minimalist/">Shrei — Technical Index</a> <div class="center"><span class="topbar-category" data-astro-cid-wy3xnbws>MCP 架构</span></div> <a class="to-home" href="/blog/">
+博客主站 <span class="arrow" aria-hidden="true">&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-ldbnljcb> <p class="category micro" data-astro-cid-ldbnljcb>MCP 架构</p> <h1 data-astro-cid-ldbnljcb> 面向 Agent 的持久代码索引：快照式增量、符号级读取与置信边界  </h1> <div class="meta micro" data-astro-cid-ldbnljcb> <time datetime="2026-08-21" data-astro-cid-ldbnljcb>2026-08-21</time> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>19 min</span> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>5,613 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span class="tags" data-astro-cid-ldbnljcb>AI Agent / MCP / Code Index / SQLite / Incremental Build / Developer Tools</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#索引把源码拆成几种可复用事实" data-astro-cid-wy3xnbws>索引把源码拆成几种可复用事实</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#冷启动先绑定根目录再复用状态" data-astro-cid-wy3xnbws>冷启动先绑定根目录，再复用状态</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#父工作区只挂接子索引" data-astro-cid-wy3xnbws>父工作区只挂接子索引</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#增量更新依赖快照而非单个事件" data-astro-cid-wy3xnbws>增量更新依赖快照而非单个事件</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#文件导航与符号导航是两条成本曲线" data-astro-cid-wy3xnbws>文件导航与符号导航是两条成本曲线</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#路径容错只做归一化与候选提示" data-astro-cid-wy3xnbws>路径容错只做归一化与候选提示</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#词法符号和语义搜索有不同职责" data-astro-cid-wy3xnbws>词法、符号和语义搜索有不同职责</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#持久状态需要生命周期协议" data-astro-cid-wy3xnbws>持久状态需要生命周期协议</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#质量检查输出置信边界" data-astro-cid-wy3xnbws>质量检查输出置信边界</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#索引的语义边界" data-astro-cid-wy3xnbws>索引的语义边界</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#与返回压缩协议的边界" data-astro-cid-wy3xnbws>与返回压缩协议的边界</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#结论" data-astro-cid-wy3xnbws>结论</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
 </a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <p>代码 Agent 的导航成本通常被低估。第一次看项目时需要了解目录，改一个函数时需要找定义和引用，改完还要确认有没有深层嵌套或遗留入口。如果每一步都从文件系统重新扫描，再把整份源码塞进上下文，工具调用本身就开始消耗主要预算。</p>
 <p>可行的做法是把代码库的结构信息变成一份跨会话存活的状态：</p>
 <ul>
@@ -266,6 +288,6 @@
 <h2 id="结论">结论<a class="anchor" href="#结论"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
 <p>这套结构最容易被误用的地方是把索引当成语义真相。“索引里没有 caller”只等于“静态解析没找到引用”，不等于代码是死的——符号作为值传递、依赖注入注册、RAII 构造和测试框架钩子都会落在索引之外。质量报告因此必须带覆盖率和置信度，把结论停在审计清单，而不是删除建议。</p>
 <p>另外两条边界同样是设计约束而非缺陷。跨进程去重让多个 Agent 共用一份索引，代价是任一进程都不能假设自己独占写入；<code>max</code> 式的候选提示只做归一化和候选返回，不替调用方选实现——一旦服务开始猜“最像的那个”，路径歧义就从显式错误变成静默错误。</p>
-<p>真正决定这份状态好不好用的，不是索引了多少字段，而是它在解析失败、事件丢失和模型更换时是否仍然可信：失败路径标记为未索引而不是写半份记录，事件丢失由全量快照兜住，向量库与主库分离所以换 embedding 模型不必重建导航事实。这三条不成立时，持久索引会比每次重扫更危险——它会稳定地返回过期结论。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-wy3xnbws> <div class="nav-cell" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/35-card-foil-data-driven-material-profile/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 上一篇
-</span> <span class="nav-title" data-astro-cid-wy3xnbws>卡片箔面材质的数据化分层与 GPU 测量</span> </a> </div> <div class="nav-cell next" data-astro-cid-wy3xnbws> <a class="nav-link" href="/blog/minimalist/33-agent-safe-graph-editing-protocol/" data-astro-cid-wy3xnbws> <span class="nav-label micro" data-astro-cid-wy3xnbws>
-下一篇 <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8594;</span> </span> <span class="nav-title" data-astro-cid-wy3xnbws>让模型写有状态宿主：把不可逆动作拆成可检查的状态转换</span> </a> </div> </nav> </div> </div>  <footer class="micro" data-astro-cid-cymvyra4> <a class="back" href="/blog/minimalist/" data-astro-cid-cymvyra4> <span class="arrow" aria-hidden="true" data-astro-cid-cymvyra4>&#8592;</span> 返回技术索引 </a> <span class="copy" data-astro-cid-cymvyra4>&copy; 2026 Shrei</span> <span class="colophon" data-astro-cid-cymvyra4>Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div> </body></html> 
+<p>真正决定这份状态好不好用的，不是索引了多少字段，而是它在解析失败、事件丢失和模型更换时是否仍然可信：失败路径标记为未索引而不是写半份记录，事件丢失由全量快照兜住，向量库与主库分离所以换 embedding 模型不必重建导航事实。这三条不成立时，持久索引会比每次重扫更危险——它会稳定地返回过期结论。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-u3wiumwa> <div class="nav-cell" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/33-agent-safe-graph-editing-protocol/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa> <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8592;</span> 上一篇
+</span> <span class="nav-title" data-astro-cid-u3wiumwa>让模型写有状态宿主：把不可逆动作拆成可检查的状态转换</span> </a> </div> <div class="nav-cell next" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/35-card-foil-data-driven-material-profile/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa>
+下一篇 <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8594;</span> </span> <span class="nav-title" data-astro-cid-u3wiumwa>卡片箔面材质的数据化分层与 GPU 测量</span> </a> </div> </nav> </div> </div>   <footer class="micro"> <a class="back" href="/blog/minimalist/"> <span class="arrow" aria-hidden="true">&#8592;</span> 返回技术索引 </a> <span class="copy">&copy; 2026 Shrei</span> <span class="colophon">Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div>  </body></html>
