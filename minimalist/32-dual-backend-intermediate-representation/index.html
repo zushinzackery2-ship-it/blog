@@ -223,32 +223,32 @@ const nightStartHour = 18;
       <path d="M0,0 L8,4 L0,8 Z" fill="currentColor"></path>
     </marker>
   </defs>
-</svg><p><text class="t" x="20" y="26">StrokeRecordV1 · 48 bytes</text>
-<rect class="fill" x="20" y="42" width="112" height="56">
-<text class="t" x="76" y="64" text-anchor="middle">point range</text>
-<text class="s" x="76" y="83" text-anchor="middle">offset + count</text>
-<rect class="b" x="132" y="42" width="118" height="56">
-<text class="t" x="191" y="64" text-anchor="middle">brush / layer</text>
-<text class="s" x="191" y="83" text-anchor="middle">flags + seed</text>
-<rect class="fill" x="250" y="42" width="142" height="56">
-<text class="t" x="321" y="64" text-anchor="middle">pigment index × 3</text>
-<text class="s" x="321" y="83" text-anchor="middle">weight × 3</text>
-<rect class="b" x="392" y="42" width="174" height="56">
-<text class="t" x="479" y="64" text-anchor="middle">opacity / thickness</text>
-<text class="s" x="479" y="83" text-anchor="middle">wetness / hardness</text></rect></rect></rect></rect></p>
-  <path class="a" d="M76 98 V137 H110">
+  <text class="t" x="20" y="26">StrokeRecordV1 · 48 bytes</text>
+  <rect class="fill" x="20" y="42" width="112" height="56"></rect>
+  <text class="t" x="76" y="64" text-anchor="middle">point range</text>
+  <text class="s" x="76" y="83" text-anchor="middle">offset + count</text>
+  <rect class="b" x="132" y="42" width="118" height="56"></rect>
+  <text class="t" x="191" y="64" text-anchor="middle">brush / layer</text>
+  <text class="s" x="191" y="83" text-anchor="middle">flags + seed</text>
+  <rect class="fill" x="250" y="42" width="142" height="56"></rect>
+  <text class="t" x="321" y="64" text-anchor="middle">pigment index × 3</text>
+  <text class="s" x="321" y="83" text-anchor="middle">weight × 3</text>
+  <rect class="b" x="392" y="42" width="174" height="56"></rect>
+  <text class="t" x="479" y="64" text-anchor="middle">opacity / thickness</text>
+  <text class="s" x="479" y="83" text-anchor="middle">wetness / hardness</text>
+  <path class="a" d="M76 98 V137 H110"></path>
   <text class="s" x="146" y="128">索引全局 points.bin</text>
-<p><text class="t" x="20" y="166">StrokePointV1 · 24 bytes each</text>
-<rect class="b" x="20" y="180" width="90" height="40"><text class="t" x="65" y="205" text-anchor="middle">x / y</text>
-<rect class="fill" x="110" y="180" width="110" height="40"><text class="t" x="165" y="205" text-anchor="middle">width</text>
-<rect class="b" x="220" y="180" width="110" height="40"><text class="t" x="275" y="205" text-anchor="middle">pressure</text>
-<rect class="fill" x="330" y="180" width="110" height="40"><text class="t" x="385" y="205" text-anchor="middle">load</text>
-<rect class="b" x="440" y="180" width="126" height="40"><text class="t" x="503" y="205" text-anchor="middle">time</text></rect></rect></rect></rect></rect></p>
-<p><text class="s" x="602" y="64">路径与材质参数分离：</text>
-<text class="s" x="602" y="84">控制点可变，笔刷与颜料仍有稳定身份</text>
-<text class="s" x="602" y="196">所有浮点均为 little-endian float32</text>
-<text class="s" x="602" y="214">坐标 / 宽度按画布归一化</text>
-</p>
+  <text class="t" x="20" y="166">StrokePointV1 · 24 bytes each</text>
+  <rect class="b" x="20" y="180" width="90" height="40"></rect><text class="t" x="65" y="205" text-anchor="middle">x / y</text>
+  <rect class="fill" x="110" y="180" width="110" height="40"></rect><text class="t" x="165" y="205" text-anchor="middle">width</text>
+  <rect class="b" x="220" y="180" width="110" height="40"></rect><text class="t" x="275" y="205" text-anchor="middle">pressure</text>
+  <rect class="fill" x="330" y="180" width="110" height="40"></rect><text class="t" x="385" y="205" text-anchor="middle">load</text>
+  <rect class="b" x="440" y="180" width="126" height="40"></rect><text class="t" x="503" y="205" text-anchor="middle">time</text>
+  <text class="s" x="602" y="64">路径与材质参数分离：</text>
+  <text class="s" x="602" y="84">控制点可变，笔刷与颜料仍有稳定身份</text>
+  <text class="s" x="602" y="196">所有浮点均为 little-endian float32</text>
+  <text class="s" x="602" y="214">坐标 / 宽度按画布归一化</text>
+</svg>
 <p>路径与材质字段分开后，同一条曲线可以改变压力和载漆而不重建身份；精修分支也能对连续参数求导，同时保留离散的笔刷、图层和颜料索引。</p>
 <h2 id="落盘格式必须自带校验">落盘格式必须自带校验<a class="anchor" href="#落盘格式必须自带校验"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
 <p>落盘格式使用 ZIP，但 ZIP 只承担容器职责。固定内容包括：</p>
@@ -318,6 +318,6 @@ s76,-153,76,-153s77,-151,77,-151c0.7,0.7,35.7,202,105,604c67.3,400.7,102,602.7,1
 <p>有界参数化换来可重放，代价是精修只能修正表示已经允许表达的问题。离散的笔刷类型、图层拓扑和颜料槽身份由基础计划决定：如果规划阶段把一片区域的方向场判断错了，精修再怎么压像素误差也纠不回来——那是要改规划器，不是调优化器。判断问题落在哪一侧，本身就是这套分层带来的能力。</p>
 <p>确定性回放的 <code>0.0</code> 误差只覆盖“表示是否完整”，不覆盖“表示是否合适”。它证明终局需要的语义全在计划里，不证明这套笔触参数化足以描述目标画面。</p>
 <p>跨 API 的测量同样有边界。D3D12 与 CUDA 的显存峰值来自两套互不相通的统计口径，各自判断是否越过门槛可以，相减后解释成“某后端多用了多少”不行。没有统一观测层时，比较结论应当停在各自 SLA。</p>
-<p>这套分层可迁移的前提只有两条：中间表示能脱离任一后端独立存在，且材质终局只实现一次。任何一个后端私下补一套自己的近似着色，可归因性立刻失效——此时共享的就又只是一张图片了。</p></path> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-u3wiumwa> <div class="nav-cell" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/31-endfield-character-wetness-shader/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa> <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8592;</span> 上一篇
+<p>这套分层可迁移的前提只有两条：中间表示能脱离任一后端独立存在，且材质终局只实现一次。任何一个后端私下补一套自己的近似着色，可归因性立刻失效——此时共享的就又只是一张图片了。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-u3wiumwa> <div class="nav-cell" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/31-endfield-character-wetness-shader/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa> <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8592;</span> 上一篇
 </span> <span class="nav-title" data-astro-cid-u3wiumwa>终末地角色湿润 Shader：逐 Draw ABI 与三类材质坐标</span> </a> </div> <div class="nav-cell next" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/33-agent-safe-graph-editing-protocol/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa>
 下一篇 <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8594;</span> </span> <span class="nav-title" data-astro-cid-u3wiumwa>让模型写有状态宿主：把不可逆动作拆成可检查的状态转换</span> </a> </div> </nav> </div> </div>   <footer class="micro"> <a class="back" href="/blog/minimalist/"> <span class="arrow" aria-hidden="true">&#8592;</span> 返回技术索引 </a> <span class="copy">&copy; 2026 Shrei</span> <span class="colophon">Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div>  </body></html>

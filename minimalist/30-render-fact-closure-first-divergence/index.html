@@ -183,8 +183,8 @@ const nightStartHour = 18;
   <text class="t" x="88" y="220" text-anchor="middle" opacity="0.5">初始纹理 Y:v0</text>
   <text class="s" x="88" y="238" text-anchor="middle" opacity="0.5">无关根</text>
   <path class="ad" d="M152 223 H214"></path>
-</svg><p><text class="s" x="360" y="286" text-anchor="middle">反向遍历只选择 A:v0 → Draw 10 → Present 30；Dispatch 20 不进入 ClosedTrace</text>
-</p>
+  <text class="s" x="360" y="286" text-anchor="middle">反向遍历只选择 A:v0 → Draw 10 → Present 30；Dispatch 20 不进入 ClosedTrace</text>
+</svg>
 <p>闭包的判据是版本依赖，与事件类型无关。一个 Copy、Clear 或 Dispatch 只要生产了目标链需要的版本，就必须保留；一个看起来重要的 Draw 若只写无关纹理，就不会进入闭包。</p>
 <p>闭包还维护递归栈。资源依赖形成环时返回 <code>closure.resource_cycle</code>；版本没有生产者、生产事件不存在、或事件并未写出声明版本时，也都阻塞重放。输出因此是一条“所有输入都有来源”的 <code>ClosedTrace</code>。</p>
 <h2 id="renderir-不改写捕获事实">RenderIR 不改写捕获事实<a class="anchor" href="#renderir-不改写捕获事实"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>

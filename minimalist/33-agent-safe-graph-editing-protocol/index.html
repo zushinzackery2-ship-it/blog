@@ -86,44 +86,44 @@ const nightStartHour = 18;
       <path d="M0,0 L8,4 L0,8 Z" fill="currentColor"></path>
     </marker>
   </defs>
-</svg><p><text class="s" x="24" y="20">可检查：无副作用，可反复执行</text></p>
-  <rect class="b" x="24" y="30" width="168" height="56">
+  <text class="s" x="24" y="20">可检查：无副作用，可反复执行</text>
+  <rect class="b" x="24" y="30" width="168" height="56"></rect>
   <text class="t" x="108" y="54" text-anchor="middle">目标身份绑定</text>
   <text class="s" x="108" y="73" text-anchor="middle">「当前宿主」不是确定指代</text>
-  <rect class="b" x="210" y="30" width="168" height="56">
+  <rect class="b" x="210" y="30" width="168" height="56"></rect>
   <text class="t" x="294" y="54" text-anchor="middle">能力运行时发现</text>
   <text class="s" x="294" y="73" text-anchor="middle">注册表有 ≠ 本会话能执行</text>
-  <rect class="b" x="396" y="30" width="168" height="56">
+  <rect class="b" x="396" y="30" width="168" height="56"></rect>
   <text class="t" x="480" y="54" text-anchor="middle">schema 从执行体派生</text>
   <text class="s" x="480" y="73" text-anchor="middle">手写必然漂移</text>
-  <rect class="b" x="582" y="30" width="168" height="56">
+  <rect class="b" x="582" y="30" width="168" height="56"></rect>
   <text class="t" x="666" y="54" text-anchor="middle">计划校验</text>
   <text class="s" x="666" y="73" text-anchor="middle">查必填与风险，不写状态</text>
-  <path class="a" d="M192 58 H210">
-  <path class="a" d="M378 58 H396">
-  <path class="a" d="M564 58 H582">
-  <path class="gate" d="M24 150 H750">
+  <path class="a" d="M192 58 H210"></path>
+  <path class="a" d="M378 58 H396"></path>
+  <path class="a" d="M564 58 H582"></path>
+  <path class="gate" d="M24 150 H750"></path>
   <text class="s" x="380" y="143" text-anchor="middle">拒绝线：检查无法诚实完成时返回错误，而不是放行</text>
-  <path class="a" d="M380 86 V186">
-<p><text class="s" x="24" y="180">不可逆：必须自带可核对的结果</text></p>
-  <rect class="fill" x="24" y="190" width="168" height="56">
+  <path class="a" d="M380 86 V186"></path>
+  <text class="s" x="24" y="180">不可逆：必须自带可核对的结果</text>
+  <rect class="fill" x="24" y="190" width="168" height="56"></rect>
   <text class="t" x="108" y="214" text-anchor="middle">干跑</text>
   <text class="s" x="108" y="233" text-anchor="middle">模拟不了就拒绝提供</text>
-  <rect class="fill" x="210" y="190" width="168" height="56">
+  <rect class="fill" x="210" y="190" width="168" height="56"></rect>
   <text class="t" x="294" y="214" text-anchor="middle">写入</text>
   <text class="s" x="294" y="233" text-anchor="middle">类型化 payload</text>
-  <rect class="fill" x="396" y="190" width="168" height="56">
+  <rect class="fill" x="396" y="190" width="168" height="56"></rect>
   <text class="t" x="480" y="214" text-anchor="middle">写后差异与诊断</text>
   <text class="s" x="480" y="233" text-anchor="middle">改了什么由协议返回</text>
-  <rect class="fill" x="582" y="190" width="168" height="56">
+  <rect class="fill" x="582" y="190" width="168" height="56"></rect>
   <text class="t" x="666" y="214" text-anchor="middle">显式提交</text>
   <text class="s" x="666" y="233" text-anchor="middle">保存不是写入的副作用</text>
-  <path class="a" d="M192 218 H210">
-  <path class="a" d="M378 218 H396">
-  <path class="a" d="M564 218 H582">
-  <rect class="b" x="24" y="272" width="726" height="42">
+  <path class="a" d="M192 218 H210"></path>
+  <path class="a" d="M378 218 H396"></path>
+  <path class="a" d="M564 218 H582"></path>
+  <rect class="b" x="24" y="272" width="726" height="42"></rect>
   <text class="s" x="380" y="298" text-anchor="middle">协议挡住的是猜测；宿主语义、版本 ABI 和资产状态仍会失败，那些错误要原样带诊断返回</text>
-
+</svg>
 <p>上半部分全是可以反复执行、不留痕迹的动作，下半部分每一步都改变宿主。分界线的意义不在于「先检查后执行」这句废话，而在于：<strong>当上半部分的某个检查无法诚实完成时，正确的动作是让整条链停下</strong>。下面三节各自是这条原则的一种具体失败。</p>
 <h2 id="能力必须运行时发现">能力必须运行时发现<a class="anchor" href="#能力必须运行时发现"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
 <p>代码里注册了一个操作，不等于当前这个会话能执行它。宿主的模块是按进程加载的：某个插件没启用、某个子系统没初始化、某个版本根本没这个功能，注册表都不知道。</p>
@@ -165,6 +165,6 @@ const nightStartHour = 18;
 <p><strong>宿主语义。</strong> 资产不存在、路径解析到多个对象、图类型与资产类型不匹配、引脚方向不兼容、宿主编译失败、包只读——协议层无法预知这些，只能保证它们以结构化的码、消息和诊断返回。这里最该抵制的诱惑是加一层「失败就重试一次」的兜底：重试会掩盖目标状态，把一次可定位的失败变成长期查不出的偶发问题。</p>
 <p><strong>版本 ABI。</strong> 宿主插件与引擎小版本、编译器和模块 ABI 绑定，跨版本必须重新编译。参数 schema 一致完全不能推出二进制兼容——这两件事在不同的层上。</p>
 <p><strong>权限边界本身。</strong> 协议约束的是调用路径的形状，不是可以做什么。要真正收窄，只能在能力目录里不暴露那些操作：没有任意脚本执行入口，没有任意反射写属性，写权限只开放到已定义的操作集合。这是设计决策，不是协议自动带来的。</p>
-<p>把这三类和前面四条分清楚很重要。前四条挡住的是「模型不知道自己在做什么」，这三类属于「做的事本身可能不成立」——用协议去兜后者，只会让前者也变得不可信。</p></rect></path></path></path></rect></rect></rect></rect></path></path></path></path></path></rect></rect></rect></rect> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-u3wiumwa> <div class="nav-cell" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/32-dual-backend-intermediate-representation/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa> <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8592;</span> 上一篇
+<p>把这三类和前面四条分清楚很重要。前四条挡住的是「模型不知道自己在做什么」，这三类属于「做的事本身可能不成立」——用协议去兜后者，只会让前者也变得不可信。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-u3wiumwa> <div class="nav-cell" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/32-dual-backend-intermediate-representation/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa> <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8592;</span> 上一篇
 </span> <span class="nav-title" data-astro-cid-u3wiumwa>双后端管线的中间表示：确定性起点与有界精修</span> </a> </div> <div class="nav-cell next" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/34-persistent-code-index-for-agents/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa>
 下一篇 <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8594;</span> </span> <span class="nav-title" data-astro-cid-u3wiumwa>面向 Agent 的持久代码索引：快照式增量、符号级读取与置信边界</span> </a> </div> </nav> </div> </div>   <footer class="micro"> <a class="back" href="/blog/minimalist/"> <span class="arrow" aria-hidden="true">&#8592;</span> 返回技术索引 </a> <span class="copy">&copy; 2026 Shrei</span> <span class="colophon">Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div>  </body></html>

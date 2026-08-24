@@ -150,28 +150,28 @@ const nightStartHour = 18;
     #svg-netsync-barrier .m{fill:currentColor;font-family:monospace;font-size:10px}
   </style>
   <defs><marker id="nb-a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="currentColor"></path></marker></defs>
-</svg><p><text class="s" x="118" y="30" text-anchor="middle">待同步 peer 表</text>
-<rect class="b" x="28" y="40" width="180" height="26">
-<text class="m" x="38" y="57">peer A  added=1 synced=1</text>
-<rect class="fill" x="28" y="70" width="180" height="26">
-<text class="m" x="38" y="87">peer B  added=1 synced=0</text>
-<rect class="b" x="28" y="100" width="180" height="26">
-<text class="m" x="38" y="117">peer C  added=1 synced=1</text></rect></rect></rect></p>
-  <path class="b" d="M208 83 L268 83" marker-end="url(#nb-a)">
-  <rect class="b" x="270" y="58" width="176" height="52">
+  <text class="s" x="118" y="30" text-anchor="middle">待同步 peer 表</text>
+  <rect class="b" x="28" y="40" width="180" height="26"></rect>
+  <text class="m" x="38" y="57">peer A  added=1 synced=1</text>
+  <rect class="fill" x="28" y="70" width="180" height="26"></rect>
+  <text class="m" x="38" y="87">peer B  added=1 synced=0</text>
+  <rect class="b" x="28" y="100" width="180" height="26"></rect>
+  <text class="m" x="38" y="117">peer C  added=1 synced=1</text>
+  <path class="b" d="M208 83 L268 83" marker-end="url(#nb-a)"></path>
+  <rect class="b" x="270" y="58" width="176" height="52"></rect>
   <text class="t" x="358" y="80" text-anchor="middle">剔除 added &#x26; synced</text>
   <text class="s" x="358" y="98" text-anchor="middle">末项覆盖，递减计数</text>
-  <path class="b" d="M358 110 L358 150" marker-end="url(#nb-a)">
-  <rect class="b" x="270" y="150" width="176" height="40">
+  <path class="b" d="M358 110 L358 150" marker-end="url(#nb-a)"></path>
+  <rect class="b" x="270" y="150" width="176" height="40"></rect>
   <text class="t" x="358" y="175" text-anchor="middle">count == 0 ?</text>
-  <path class="b" d="M446 170 L520 170" marker-end="url(#nb-a)">
+  <path class="b" d="M446 170 L520 170" marker-end="url(#nb-a)"></path>
   <text class="s" x="483" y="162" text-anchor="middle">是</text>
-  <path class="b" d="M358 190 L358 224 L270 224 L270 180" stroke-dasharray="5 4" marker-end="url(#nb-a)">
+  <path class="b" d="M358 190 L358 224 L270 224 L270 180" stroke-dasharray="5 4" marker-end="url(#nb-a)"></path>
   <text class="s" x="300" y="242" text-anchor="middle">否：继续等</text>
-  <rect class="fill" x="522" y="146" width="210" height="48">
+  <rect class="fill" x="522" y="146" width="210" height="48"></rect>
   <text class="t" x="627" y="168" text-anchor="middle">state = Ready (5)</text>
   <text class="s" x="627" y="185" text-anchor="middle">经会话 vtable 回报 host</text>
-
+</svg>
 <h2 id="确定性对账只同步-seed不同步几何">确定性对账：只同步 seed，不同步几何<a class="anchor" href="#确定性对账只同步-seed不同步几何"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
 <p>大状态不靠网络搬运。地图是每个 peer 用同一个 seed 在本地各自生成的——<a href="/blog/posts/42-helldivers2-map-generation-pipeline/">上一篇讲地图生成流水线</a>时已经看到生成整条跑在客户端 <code>game.dll</code> 里、seed 上行到后端。网络侧只需保证 seed 一致，然后用哈希对账。</p>
 <p>对账的证据是一条 client 侧分析事件 <code>LevelGenerationMismatch</code>。它的发射函数逐字段拼装出这样一组内容：</p>
@@ -190,5 +190,5 @@ const nightStartHour = 18;
 <p>区分这两条通道是这个主题最容易失真的地方：遥测描述「会话里已经发生了什么」，供后端统计和排障；gameplay 的权威流转始终走 <code>rpc_from_host_*</code>。看到一堆网络字段名，不等于看到了同步协议本身。</p>
 <h2 id="结论">结论<a class="anchor" href="#结论"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
 <p>Helldivers 2 的联机是一套 host 权威的 P2P 同步：一名 peer 持有会话权威并用 <code>rpc_from_host_*</code> 单向驱动其余 client；client 走 <code>Joining → … → Ready → Alive</code> 状态机，在一个「全员同步才推进」的屏障上对齐；地图这类大状态用同一 seed 各自本地生成、靠 <code>LevelGenerationMismatch</code> 的哈希对账兜底；host 掉线由主机迁移平移权威；装备战备走 <code>PlayerHistorySystem</code> 复制并支持重连续用。至于每条 RPC 的线上字节格式和传输可靠性层，落在独立网络模块与运行时流量里，需要网络抓包才能定，代码映像本身给不出。</p>
-<p>做自己项目时最值得照搬的是那道<strong>确定性对账</strong>：能用共享输入本地重建的大状态（地图、程序化内容），就同步种子而不是同步结果，再用逐步哈希兜底一致性。带宽省在刀刃上，代价是把「确定性」当成硬约束来维护——这正是 <code>LevelGenerationMismatch</code> 存在的理由。</p></rect></path></path></rect></path></rect></path> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-u3wiumwa> <div class="nav-cell" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/42-helldivers2-map-generation-pipeline/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa> <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8592;</span> 上一篇
+<p>做自己项目时最值得照搬的是那道<strong>确定性对账</strong>：能用共享输入本地重建的大状态（地图、程序化内容），就同步种子而不是同步结果，再用逐步哈希兜底一致性。带宽省在刀刃上，代价是把「确定性」当成硬约束来维护——这正是 <code>LevelGenerationMismatch</code> 存在的理由。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-u3wiumwa> <div class="nav-cell" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/42-helldivers2-map-generation-pipeline/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa> <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8592;</span> 上一篇
 </span> <span class="nav-title" data-astro-cid-u3wiumwa>预制池、种子与烘焙：Helldivers 2 地图生成流水线</span> </a> </div> <div class="nav-cell next" data-astro-cid-u3wiumwa>  </div> </nav> </div> </div>   <footer class="micro"> <a class="back" href="/blog/minimalist/"> <span class="arrow" aria-hidden="true">&#8592;</span> 返回技术索引 </a> <span class="copy">&copy; 2026 Shrei</span> <span class="colophon">Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div>  </body></html>

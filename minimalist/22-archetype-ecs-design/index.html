@@ -161,13 +161,13 @@ const nightStartHour = 18;
   <line x1="136" y1="98" x2="168" y2="98" stroke="currentColor" stroke-width="1.5" marker-end="url(#a5)"></line>
   <line x1="296" y1="98" x2="328" y2="98" stroke="currentColor" stroke-width="1.5" marker-end="url(#a5)"></line>
   <line x1="468" y1="98" x2="500" y2="98" stroke="currentColor" stroke-width="1.5" marker-end="url(#a5)"></line>
-</svg><p><text x="360" y="190" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.82">结构没变就不迁；变了才建新块并搬列</text></p>
+  <text x="360" y="190" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.82">结构没变就不迁；变了才建新块并搬列</text>
   <defs>
-    <marker id="a5" markerwidth="8" markerheight="8" refx="6" refy="3" orient="auto">
-      <path d="M0,0 L6,3 L0,6 Z" fill="currentColor" opacity="0.82">
-    </path></marker>
+    <marker id="a5" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="currentColor" opacity="0.82"></path>
+    </marker>
   </defs>
-
+</svg>
 <p>Job 跑在块上时，结构变更改走延迟路径。延迟路径是一条命令队列：创建、附加、移除、改值、销毁、查询各占一个操作码。每条命令带着句柄，以及一份 <code>{组件 id, 大小, 数据指针}</code> 快照。</p>
 <p>创建可以先发临时句柄。同一条队列里后面的附加操作先写这个临时 id，回放时再翻译成真正的槽位。并行 Job 往队列里写，用并行写入器；回放在主线程做完，缓冲可以回收再用。只要延迟删除，另有一条窄口。</p>
 <h2 id="用-128-位掩码换常数时间匹配">用 128 位掩码换常数时间匹配<a class="anchor" href="#用-128-位掩码换常数时间匹配"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
@@ -210,13 +210,13 @@ const nightStartHour = 18;
   <line x1="272" y1="80" x2="272" y2="130" stroke="currentColor" stroke-width="1.5" marker-end="url(#a3)"></line>
   <line x1="606" y1="80" x2="562" y2="130" stroke="currentColor" stroke-width="1.5" marker-end="url(#a3)"></line>
   <line x1="372" y1="165" x2="420" y2="165" stroke="currentColor" stroke-width="1.5" marker-end="url(#a3)"></line>
-</svg><p><text x="360" y="244" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.82">并行度从查询 Job 一直传到切分</text></p>
+  <text x="360" y="244" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.82">并行度从查询 Job 一直传到切分</text>
   <defs>
-    <marker id="a3" markerwidth="8" markerheight="8" refx="6" refy="3" orient="auto">
-      <path d="M0,0 L6,3 L0,6 Z" fill="currentColor" opacity="0.82">
-    </path></marker>
+    <marker id="a3" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="currentColor" opacity="0.82"></path>
+    </marker>
   </defs>
-
+</svg>
 <p>常见写法是两个 Job 接力。查询 Job 拿着管理器和 <code>jobCount</code>，在 worker 里把结果写进延迟容器。处理 Job 只拿结果指针和业务数据，按区间下标取列。主线程可以在查询尚未结束时就把处理 Job 挂上去。</p>
 <p>主线程上的小规模读写仍然可以直接枚举那张懒视图。需要立刻知道命中数时，走立即结果。</p>
 <h2 id="逻辑和渲染各用一张表">逻辑和渲染各用一张表<a class="anchor" href="#逻辑和渲染各用一张表"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
