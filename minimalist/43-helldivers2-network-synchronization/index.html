@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>主机权威、同步屏障与种子对账：Helldivers 2 的联机同步模型 · Shrei</title><meta name="description" content="Helldivers 2 的联机不是服务器下发世界，而是一名 peer 持有会话权威、其余 peer 在同步屏障上对齐、地图靠同一 seed 各自本地生成再哈希对账。本文用运行时映像里的字符串锚点、函数区间和指令序列，把主机权威、加入状态机、同步屏障、确定性对账、主机迁移和复制目标逐层钉到具体 RVA 上。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/43-helldivers2-network-synchronization/"><meta property="og:title" content="主机权威、同步屏障与种子对账：Helldivers 2 的联机同步模型 · Shrei"><meta property="og:description" content="Helldivers 2 的联机不是服务器下发世界，而是一名 peer 持有会话权威、其余 peer 在同步屏障上对齐、地图靠同一 seed 各自本地生成再哈希对账。本文用运行时映像里的字符串锚点、函数区间和指令序列，把主机权威、加入状态机、同步屏障、确定性对账、主机迁移和复制目标逐层钉到具体 RVA 上。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/43-helldivers2-network-synchronization/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><script>(function(){const dayStartHour = 6;
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>主机权威、同步屏障与种子对账：Helldivers 2 的联机同步模型 · Shrei</title><meta name="description" content="Helldivers 2 的联机不是服务器下发世界，而是一名玩家作为 host 持有会话权威、其余玩家在同步屏障上对齐、地图靠同一个 seed 各自本地生成再用哈希对账。本文按主机权威、加入状态机、同步屏障、确定性对账、主机迁移和装备复制，拆开这套四人 P2P 同步方法。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/43-helldivers2-network-synchronization/"><meta property="og:title" content="主机权威、同步屏障与种子对账：Helldivers 2 的联机同步模型 · Shrei"><meta property="og:description" content="Helldivers 2 的联机不是服务器下发世界，而是一名玩家作为 host 持有会话权威、其余玩家在同步屏障上对齐、地图靠同一个 seed 各自本地生成再用哈希对账。本文按主机权威、加入状态机、同步屏障、确定性对账、主机迁移和装备复制，拆开这套四人 P2P 同步方法。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/43-helldivers2-network-synchronization/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><script>(function(){const dayStartHour = 6;
 const nightStartHour = 18;
 
     (function ()
@@ -64,49 +64,23 @@ const nightStartHour = 18;
     })();
 })();</script><link rel="stylesheet" href="/blog/astro/_slug_.1l8rUkZ0.css"><style>.frame>.topbar{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.frame>.topbar>.brand{justify-self:start;transition:color .14s ease}.frame>.topbar>.brand:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.frame>.topbar>.brand:hover{color:var(--red)}.frame>.topbar>.center{min-width:0;text-align:center}.frame>.topbar>.to-home{justify-self:end;transition:color .14s ease}.frame>.topbar>.to-home .arrow{display:inline-block;transition:transform .14s ease}.frame>.topbar>.to-home:hover{color:var(--red)}.frame>.topbar>.to-home:hover .arrow{transform:translate(.25em)}.frame>footer{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}.frame>footer .back{transition:color .14s ease}.frame>footer .back .arrow{display:inline-block;transition:transform .14s ease}.frame>footer .back:hover{color:var(--red)}.frame>footer .back:hover .arrow{transform:translate(-.25em)}.frame>footer .colophon{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.frame>.topbar{grid-template-columns:1fr auto}.frame>.topbar>.center{display:none}.frame>footer{grid-template-columns:1fr;gap:.4rem}.frame>footer .colophon{justify-self:start}}@media print{.frame>.topbar>.to-home,.frame>footer{display:none}}:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}
 </style><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"></head> <body> <div class="frame"> <div class="topbar micro"> <a class="brand" href="/blog/minimalist/">Shrei — Technical Index</a> <div class="center"><span class="topbar-category" data-astro-cid-wy3xnbws>游戏系统设计</span></div> <a class="to-home" href="/blog/">
-博客主站 <span class="arrow" aria-hidden="true">&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-ldbnljcb> <p class="category micro" data-astro-cid-ldbnljcb>游戏系统设计</p> <h1 data-astro-cid-ldbnljcb> 主机权威、同步屏障与种子对账：Helldivers 2 的联机同步模型  </h1> <div class="meta micro" data-astro-cid-ldbnljcb> <time datetime="2026-08-24" data-astro-cid-ldbnljcb>2026-08-24</time> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>22 min</span> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>7,617 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span class="tags" data-astro-cid-ldbnljcb>Networking / Multiplayer / Host Migration / Determinism / State Machine</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#一名-peer-持有会话权威rpc-只有-host--client-一个方向" data-astro-cid-wy3xnbws>一名 peer 持有会话权威，RPC 只有 host → client 一个方向</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#会话与-lobby-的握手字段都在-gamedll-里传输层不在" data-astro-cid-wy3xnbws>会话与 lobby 的握手字段都在 game.dll 里，传输层不在</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#加入是一条状态机出口写在同一张枚举里" data-astro-cid-wy3xnbws>加入是一条状态机，出口写在同一张枚举里</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#热加入是独立分支最终汇回同一条终线" data-astro-cid-wy3xnbws>热加入是独立分支，最终汇回同一条终线</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#同步屏障0xd6dcd0-把全员就绪写成一次数组压缩" data-astro-cid-wy3xnbws>同步屏障：0xD6DCD0 把「全员就绪」写成一次数组压缩</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#确定性对账只同步-seed用-levelgenerationmismatch-兜底" data-astro-cid-wy3xnbws>确定性对账：只同步 seed，用 LevelGenerationMismatch 兜底</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#主机迁移集中在-0xd70970-一个函数里" data-astro-cid-wy3xnbws>主机迁移集中在 0xD70970 一个函数里</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#复制装备与战备的是-playerhistorysystem" data-astro-cid-wy3xnbws>复制装备与战备的是 PlayerHistorySystem</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#遥测通道和-gameplay-通道是两条独立的路" data-astro-cid-wy3xnbws>遥测通道和 gameplay 通道是两条独立的路</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#结论" data-astro-cid-wy3xnbws>结论</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
-</a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <p>Helldivers 2 是四人 P2P 联机：一名 peer 当 host 持有会话权威，其余 peer 是 client。方法不是「服务器算好世界再下发」，而是 <strong>host 通过 <code>rpc_from_host_*</code> 单向驱动 client，client 在一个同步屏障上对齐后才进入战斗，地图这类大状态靠同一个 seed 各自本地生成、事后用哈希对账</strong>。</p>
-<p>本文的判读对象是 Steam Build <code>24036910</code> 的运行时内存映像 <code>dump_7312_game.dll.bin</code>（PID 7312，SHA-256 <code>5E34567B…C0C91BDD</code>）。它是一份代码内存映像：能锁定字符串锚点、<code>lea</code> 交叉引用、以及这些引用所在的函数区间与指令序列。下面每个 RVA、每段函数区间都能按这个 SHA 复算。至于每条 RPC 的线上字节格式和 Steam 传输可靠性层，位于独立网络模块与运行时流量里，代码映像本身给不出——这一条留到最后一句说清。</p>
-<h2 id="一名-peer-持有会话权威rpc-只有-host--client-一个方向">一名 peer 持有会话权威，RPC 只有 host → client 一个方向<a class="anchor" href="#一名-peer-持有会话权威rpc-只有-host--client-一个方向"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>所有 gameplay 方向的 RPC 都叫 <code>rpc_from_host_*</code>，方向单一：host 下发，client 处理。模块里有两个对称的同步器类型：<code>ClientSynchronizer</code>（<code>0x1FC4CD0</code>）与 <code>HostSynchronizer</code>（<code>0x1FC55C0</code>）。client 不自己推进会话状态，它等 host 的指令。整族 RPC 的字符串锚点是这样的：</p>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<table><thead><tr><th align="left">RPC 字符串</th><th align="left">字符串 RVA</th><th align="left">引用/处理</th></tr></thead><tbody><tr><td align="left"><code>rpc_from_host_client_ready task=%d active_target=%d target=%d</code></td><td align="left"><code>0x1FC5438</code></td><td align="left"><code>0xB16CB7–0xB16DEF</code>、<code>0xD6ECB0–0xD6EDD5</code></td></tr><tr><td align="left"><code>rpc_from_host_abort_network_play</code></td><td align="left"><code>0x1FC5484</code></td><td align="left">host 令 client 中止联机</td></tr><tr><td align="left"><code>rpc_from_host_peer_disconnected</code></td><td align="left"><code>0x1FC55E4</code></td><td align="left">host 广播某 peer 断开</td></tr><tr><td align="left"><code>rpc_from_host_kicked</code></td><td align="left"><code>0x1FC5644</code></td><td align="left">host 踢出</td></tr><tr><td align="left"><code>rpc_from_migrated_host_peer_state</code></td><td align="left"><code>0x1FC53F0</code></td><td align="left">迁移后新 host 补发 peer 状态</td></tr></tbody></table>
-<p>注意第一条的格式串 <code>rpc_from_host_client_ready task=%d active_target=%d target=%d</code>：host 通知 client「就绪」时带三个整型参数（<code>task</code> / <code>active_target</code> / <code>target</code>），推进的正是下一节的同步任务。反方向没有对称的 <code>rpc_from_client_*</code> gameplay 指令族——client 往 host 送的是「我就绪了」这类回执，不是命令。</p>
-<p>托管本身也是一组显式动作，字符串从 <code>0x1FC55B0</code> 起成组排列：<code>start_hosting</code>、<code>stop_hosting</code>、<code>pause_hosting</code>、<code>resume_hosting</code>、<code>deeplink_temporary_hosting</code>。</p>
+博客主站 <span class="arrow" aria-hidden="true">&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-ldbnljcb> <p class="category micro" data-astro-cid-ldbnljcb>游戏系统设计</p> <h1 data-astro-cid-ldbnljcb> 主机权威、同步屏障与种子对账：Helldivers 2 的联机同步模型  </h1> <div class="meta micro" data-astro-cid-ldbnljcb> <time datetime="2026-08-24" data-astro-cid-ldbnljcb>2026-08-24</time> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>19 min</span> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>6,837 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span class="tags" data-astro-cid-ldbnljcb>Networking / Multiplayer / Host Migration / Determinism / State Machine</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#先说结论" data-astro-cid-wy3xnbws>先说结论</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#谁说了算host-单向驱动" data-astro-cid-wy3xnbws>谁说了算：host 单向驱动</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#怎么进场加入是一条状态机" data-astro-cid-wy3xnbws>怎么进场：加入是一条状态机</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#什么时候一起开打同步屏障" data-astro-cid-wy3xnbws>什么时候一起开打：同步屏障</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#大状态怎么对齐只同步-seed不同步几何" data-astro-cid-wy3xnbws>大状态怎么对齐：只同步 seed，不同步几何</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#host-走了怎么办主机迁移" data-astro-cid-wy3xnbws>host 走了怎么办：主机迁移</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#什么东西真的在网上传装备与战备" data-astro-cid-wy3xnbws>什么东西真的在网上传：装备与战备</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#别把遥测当成同步协议" data-astro-cid-wy3xnbws>别把遥测当成同步协议</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#结论" data-astro-cid-wy3xnbws>结论</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#附锚点索引" data-astro-cid-wy3xnbws>附：锚点索引</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+</a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <p>四人合作射击游戏要在四台机器之间维持一个一致的战场，最省事的做法是架一台权威服务器算好一切再下发。Helldivers 2 没这么做——它是 P2P，四名玩家里一人当 host，其余是 client。这带来一个具体问题：没有中立服务器，谁说了算？大状态（比如整张地图）怎么在四台机器上保持一致而又不把带宽打爆？</p>
+<p>Helldivers 2 的答案是一套 <strong>host 权威 + 确定性重建</strong> 的组合：host 通过一族单向的 <code>rpc_from_host_*</code> 指令驱动 client，client 在一个「全员就绪才推进」的同步屏障上对齐后才进入战斗；地图这类大状态不在网络上搬运，而是每台机器用同一个 seed 各自本地生成，事后只用哈希对账。下面的判读都基于 Steam Build <code>24036910</code> 的游戏模块 <code>game.dll</code>。</p>
+<h2 id="先说结论">先说结论<a class="anchor" href="#先说结论"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>这套联机方法可以拆成六件事：</p>
+<ul>
+<li><strong>权威</strong>：一名 peer 是 host，所有 gameplay 指令都是 host 单向下发（<code>rpc_from_host_*</code>），client 只回执，不发号施令。</li>
+<li><strong>加入</strong>：client 走一条 <code>Joining → … → Ready → Alive</code> 的状态机，每一种失败都归一成同一张枚举里的一个状态码。</li>
+<li><strong>屏障</strong>：从「同步中」跨到「就绪」靠一个跨 peer 的屏障，全员同步后 client 才把自己置为 Ready 并回报 host。</li>
+<li><strong>对账</strong>：地图各自本地生成，只同步 seed，用逐步哈希比对，不一致就上报，不搬运几何。</li>
+<li><strong>迁移</strong>：host 中途离开时推选新 host，把每个 peer 的进度平移过去，而不是重开一局。</li>
+<li><strong>复制</strong>：真正在网络上复制的 gameplay 状态里最清晰的是装备与战备，走一套玩家历史系统，支持掉线重连续用。</li>
+</ul>
+<p>这六件事各自回答一个问题——谁说了算、怎么进场、什么时候一起开打、大状态怎么对齐、host 走了怎么办、什么东西真的在网上传。合起来就是一套不依赖专用服务器、又能保证一致性的 P2P 同步。</p>
+<h2 id="谁说了算host-单向驱动">谁说了算：host 单向驱动<a class="anchor" href="#谁说了算host-单向驱动"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>所有 gameplay 方向的 RPC 都叫 <code>rpc_from_host_*</code>，方向单一：host 下发，client 执行。游戏模块里有两个对称的类型 <code>ClientSynchronizer</code> 和 <code>HostSynchronizer</code>，client 那个不自己推进会话状态，它等 host 的指令。这一族指令做的事很有代表性：<code>client_ready</code> 通知 client 推进到下一个同步任务，<code>abort_network_play</code> 中止联机，<code>peer_disconnected</code> 广播某人掉线，<code>kicked</code> 踢人，<code>migrated_host_peer_state</code> 在迁移后补发 peer 状态。</p>
+<p>反方向没有对称的 <code>rpc_from_client_*</code> gameplay 指令族——client 往 host 送的是「我就绪了」这类回执，不是命令。连托管本身都是一组显式动作：<code>start_hosting</code>、<code>stop_hosting</code>、<code>pause_hosting</code>、<code>resume_hosting</code>。权威集中在一处，是这套模型后面所有机制的地基。</p>
 <svg id="svg-netsync-authority" viewBox="0 0 760 250" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto" role="img" aria-label="主机权威拓扑：一个 host 在中心，通过 rpc_from_host_* 单向驱动三个 client，client 只回送就绪回执">
   <style>
     #svg-netsync-authority .b{fill:none;stroke:currentColor;stroke-width:1.4}
@@ -117,7 +91,7 @@ const nightStartHour = 18;
   <defs><marker id="na-a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="currentColor"></path></marker></defs>
   <rect class="fill" x="316" y="24" width="128" height="56"></rect>
   <text class="t" x="380" y="48" text-anchor="middle">host</text>
-  <text class="s" x="380" y="66" text-anchor="middle">会话权威 · HostSynchronizer</text>
+  <text class="s" x="380" y="66" text-anchor="middle">会话权威</text>
   <rect class="b" x="40" y="168" width="150" height="56"></rect>
   <text class="t" x="115" y="192" text-anchor="middle">client</text>
   <text class="s" x="115" y="210" text-anchor="middle">Synchronizing</text>
@@ -134,107 +108,11 @@ const nightStartHour = 18;
   <path class="b" d="M300 200 L196 200" stroke-dasharray="5 4" marker-end="url(#na-a)"></path>
   <text class="s" x="250" y="192" text-anchor="middle">就绪回执</text>
 </svg>
-<h2 id="会话与-lobby-的握手字段都在-gamedll-里传输层不在">会话与 lobby 的握手字段都在 game.dll 里，传输层不在<a class="anchor" href="#会话与-lobby-的握手字段都在-gamedll-里传输层不在"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>会话由 Steam 会话 + PlayFab live lobby 两层标识拼起来，握手字段作为字符串常量留在映像里：</p>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<table><thead><tr><th align="left">字段</th><th align="left">RVA</th><th align="left">含义</th></tr></thead><tbody><tr><td align="left"><code>sessionId</code></td><td align="left"><code>0x1FC2950</code></td><td align="left">会话标识</td></tr><tr><td align="left"><code>lobbySeed</code></td><td align="left"><code>0x1FC3660</code></td><td align="left">lobby 种子</td></tr><tr><td align="left"><code>connectionString</code></td><td align="left"><code>0x1FC3830</code></td><td align="left">连接串</td></tr><tr><td align="left"><code>crossplayMode</code></td><td align="left"><code>0x1FC3848</code></td><td align="left">跨平台联机模式</td></tr><tr><td align="left"><code>numSessionMembers</code></td><td align="left"><code>0x1FC3858</code></td><td align="left">会话成员数</td></tr><tr><td align="left"><code>numLobbyMembers</code></td><td align="left"><code>0x1FC3890</code></td><td align="left">lobby 成员数</td></tr><tr><td align="left"><code>%i.%i.%i.%i:%i</code></td><td align="left"><code>0x2016A18</code></td><td align="left">地址格式串（IPv4:port）</td></tr><tr><td align="left"><code>lobby_host_propagation_timeout</code></td><td align="left"><code>0x1FC4F90</code></td><td align="left">lobby host 传播超时</td></tr></tbody></table>
-<p>两个成员计数字段是分开的：<code>numSessionMembers</code> 数的是已进入游戏会话的 peer，<code>numLobbyMembers</code> 数的是 lobby 里的成员——lobby 是加入前的集合点，会话是加入后的战局，两者人数在热加入、掉线、迁移这些时刻会短暂不一致。<code>%i.%i.%i.%i:%i</code> 是记录 peer 连接时用的 <code>IPv4:port</code> 地址格式串，说明连接层是按 endpoint 寻址而不是纯 Steam id 中转。</p>
-<p>具体传输实现不在这份映像里：<code>SteamNetworkingSockets</code>、<code>ISteamNetworking</code>、<code>reliable_ordered</code> 在两份映像中的出现次数都是 <code>0</code>（这不是「没有传输」，而是传输在别的模块）。信道、可靠/有序语义、NAT 穿透位于独立网络模块，本文只到「会话层用哪些字段握手」为止，不越界去讲字节怎么打包。</p>
-<h2 id="加入是一条状态机出口写在同一张枚举里">加入是一条状态机，出口写在同一张枚举里<a class="anchor" href="#加入是一条状态机出口写在同一张枚举里"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>一名 client 加入会话不是一步到位，而是走一条状态机。主干路径：</p>
+<h2 id="怎么进场加入是一条状态机">怎么进场：加入是一条状态机<a class="anchor" href="#怎么进场加入是一条状态机"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>一名 client 加入会话不是一步到位，而是走一条状态机。主干路径是：</p>
 <div class="expressive-code"><link rel="stylesheet" href="/blog/astro/ec.iz9dg.css"><script type="module" src="/blog/astro/ec.0vx5m.js"></script><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">Joining → WaitForLoadout → Synchronizing → Synchronized → Ready → Alive</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="Joining → WaitForLoadout → Synchronizing → Synchronized → Ready → Alive"><div></div></button></div></figure></div>
-<p><code>ClientState_Joining</code>（<code>0x1FC4D58</code>）之后先做 loadout（<code>WaitForLoadout</code>），再进入同步阶段。这些状态名不是散落的字符串，而是一整张连续排布的枚举，从 <code>0x1FC49A8</code> 起：正常态、临时态、各类异常出口全在一起。完整列出（节选自枚举区间）：</p>
-<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">Dead  Leaving  Synchronizing  Synchronized  WaitForLoadout  Ready  Alive  Spectate</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">HostConnectionBroken  BadPeerConnection  NetworkConnectionBroken  SessionConnectionBroken</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">GWVersionMismatch  PublicKeyMismatch  CrossplayDisabled  NoLongerHosting  NetworkPlayDisallowed</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">Kicked  KickedMigration  KickedOnboarding  JoinFailed  LoadoutAborted  ReservedSlotTimeout</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="Dead  Leaving  Synchronizing  Synchronized  WaitForLoadout  Ready  Alive  SpectateHostConnectionBroken  BadPeerConnection  NetworkConnectionBroken  SessionConnectionBrokenGWVersionMismatch  PublicKeyMismatch  CrossplayDisabled  NoLongerHosting  NetworkPlayDisallowedKicked  KickedMigration  KickedOnboarding  JoinFailed  LoadoutAborted  ReservedSlotTimeout"><div></div></button></div></figure></div>
-<p>一张表里同时容纳「同步进度」（<code>Synchronizing</code>/<code>Synchronized</code>/<code>Ready</code>）与「失败原因」（<code>GWVersionMismatch</code> 版本不匹配、<code>PublicKeyMismatch</code> 密钥不匹配、<code>CrossplayDisabled</code> 跨平台被禁、<code>BadPeerConnection</code> 连接质量差），说明加入过程的每一次退出都被归一成一个状态码，而不是散落的错误分支。</p>
-<p>peer 加入与移除在日志里留下成对的锚点：</p>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<table><thead><tr><th align="left">日志字符串</th><th align="left">RVA</th></tr></thead><tbody><tr><td align="left"><code>on_ready_peer_added - peer_id: %llx, loadout: %s</code></td><td align="left"><code>0x1FB6F20</code></td></tr><tr><td align="left"><code>on_mission_start - peer_id: %llx, loadout: %s</code></td><td align="left"><code>0x1FB7238</code></td></tr><tr><td align="left"><code>Adding syncing peer %llx</code></td><td align="left"><code>0x1FC52D8</code></td></tr><tr><td align="left"><code>Added confirmed peer at %u [%llx]</code></td><td align="left"><code>0x1FC54E0</code></td></tr><tr><td align="left"><code>Peer already added!</code> / <code>Peer already confirmed!</code></td><td align="left"><code>0x1FC5380</code> / <code>0x1FC5398</code></td></tr><tr><td align="left"><code>on_peer_removed peer: %llx</code></td><td align="left"><code>0x2016F10</code></td></tr></tbody></table>
-<p><code>Peer already added!</code> 和 <code>Peer already confirmed!</code> 是加 peer 路径上的幂等守卫：重复的加入/确认消息不会往数组里塞第二份，而是命中这两条日志被丢弃。这和屏障末尾那次 <code>[rbx+0x1d0]==5</code> 的复查是同一种设计——P2P 下消息可能重发或乱序，所以每个会改状态的入口都先查一遍当前状态。</p>
-<p>其中 <code>Adding syncing peer %llx</code> 在函数 <code>0xD6DA80–0xD6DB03</code> 内被 <code>lea</code> 引用（引用点 <code>0xD6DABB</code>）——它就在下一节那个屏障函数（<code>0xD6DCD0</code>）的隔壁，加 peer 与轮询 peer 是同一套数据结构（<code>+0x40</code> 那张数组）上的两个操作：一个往里塞项，一个把已同步的项压缩出去。</p>
-<p><code>on_ready_peer_added</code> 和 <code>on_mission_start</code> 两条日志都带 <code>peer_id: %llx, loadout: %s</code>——peer 就绪时记一次 loadout，任务开始时再记一次。loadout 在加入和开打两个时点各被快照一次，正好对应后面 <code>PlayerHistorySystem</code> 里那份按 peer 保存的记录。</p>
-<h3 id="热加入是独立分支最终汇回同一条终线">热加入是独立分支，最终汇回同一条终线<a class="anchor" href="#热加入是独立分支最终汇回同一条终线"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
-<p>中途加入进行中的战局（hot-join）走的是另一组入口：<code>is_hotjoining</code>、<code>has_hotjoined</code>、<code>from_host_added_to_session</code>、<code>on_hotjoin_loadout_complete</code>。它不复用冷启动那条「等所有人一起同步」的路径，而是由 host 把新 peer 单独塞进已在跑的会话，补齐它的 loadout。但无论冷启动还是热加入，成功的终点是同一条日志：<code>Join accepted and synced!</code>（<code>0x1FC5130</code>）——加入被接受，且已完成同步。</p>
+<p>先是 <code>Joining</code>，然后停在 <code>WaitForLoadout</code> 等玩家选好装备，再进入同步阶段（<code>Synchronizing</code> / <code>Synchronized</code>），全员对齐后到 <code>Ready</code>，最后 <code>Alive</code> 真正入场。中途加入进行中的战局（hot-join）走一条独立分支——由 host 把新玩家单独塞进已在跑的会话、补齐装备，而不是让所有人陪它重走一遍同步。但无论冷启动还是热加入，成功的终点是同一句日志：<code>Join accepted and synced!</code>。</p>
+<p>值得一提的是失败也走同一张枚举：断线是 <code>HostConnectionBroken</code>，版本对不上是 <code>GWVersionMismatch</code>，密钥不匹配是 <code>PublicKeyMismatch</code>，被踢是 <code>Kicked</code>，因迁移被踢是 <code>KickedMigration</code>，装备中途取消是 <code>LoadoutAborted</code>。把每一种退出都收敛成一个状态码，好处是「这个人为什么没进来」永远有一个明确答案，而不是散落在各处的错误分支。</p>
 <svg id="svg-netsync-join" viewBox="0 0 760 210" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto" role="img" aria-label="加入状态机：Joining 到 WaitForLoadout 到 Synchronizing 到 Synchronized 到 Ready 到 Alive，异常分支通向 Leaving 或 Kicked">
   <style>
     #svg-netsync-join .b{fill:none;stroke:currentColor;stroke-width:1.4}
@@ -266,87 +144,59 @@ const nightStartHour = 18;
   <path class="b" d="M469 84 L469 144" stroke-dasharray="5 4" marker-end="url(#nj-a)"></path>
   <text class="s" x="360" y="112" text-anchor="middle">断线 / 版本或密钥不匹配 / 被踢</text>
 </svg>
-<h2 id="同步屏障0xd6dcd0-把全员就绪写成一次数组压缩">同步屏障：<code>0xD6DCD0</code> 把「全员就绪」写成一次数组压缩<a class="anchor" href="#同步屏障0xd6dcd0-把全员就绪写成一次数组压缩"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p><code>Synchronizing</code> 到 <code>Ready</code> 的跨越靠一个跨 peer 的屏障。屏障两侧是成对注册的工作项：<code>on_synchronized_tasks_started</code>（<code>0x1FB72A0</code>）与 <code>on_synchronized_tasks_done</code>（<code>0x1FB7208</code>），单个工作项执行时打印 <code>Performing synced task %s</code>（<code>0x1FC5228</code>）。<code>on_synchronized_tasks_started</code> 至少被五个函数 <code>lea</code> 引用（<code>0xA602E0</code>、<code>0xAE839B</code>、<code>0xB18282</code>、<code>0xD6C270</code>、<code>0xD6FADB</code>），<code>_done</code> 被 <code>0xA5F420</code>、<code>0xA66A50</code> 引用——同步任务是一批登记的工作项，在所有 peer 上成对进入/退出，而不是一段直线代码。</p>
-<p>client 侧的屏障判定集中在 <code>0xD6DCD0–0xD6DDD1</code> 这一个函数里，机器码可以完整判读。关键指令抄录如下：</p>
-<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">D6DCD6  mov   eax, [rcx+0x38]          ; count = 待同步 peer 数</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">D6DCFD  cmp   byte [rbx+r9*8+8], 0     ; peer.added   （元素 +8）</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">D6DD05  cmp   byte [rbx+r9*8+9], 0     ; peer.synced  （元素 +9）</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">D6DD0D  lea   eax, [r8-1]              ; count - 1</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">D6DD11  mov   [rbx+0x38], eax          ; 写回递减后的 count</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">D6DD1F  movups xmm0, [rbx+rcx*8]       ; 读末项（16 字节）</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">D6DD23  movups [rbx+r9*8], xmm0        ; 覆盖当前项 → 数组压缩</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">8</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">D6DD3C  lea   rdx, [rip+0x125766d]     ; "All peers have synced..." (0x1FC53B0)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">9</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">D6DD93  cmp   dword [rbx+0x1d0], 5     ; 已经是 Ready(5) ？</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">10</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">D6DDB1  mov   dword [rbx+0x1d0], 5     ; 置 Ready(5)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">11</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">D6DDC4  jmp   qword [r8+0x470]         ; 经会话对象虚表尾调用回报 host</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="D6DCD6  mov   eax, [rcx+0x38]          ; count = 待同步 peer 数D6DCFD  cmp   byte [rbx+r9*8+8], 0     ; peer.added   （元素 +8）D6DD05  cmp   byte [rbx+r9*8+9], 0     ; peer.synced  （元素 +9）D6DD0D  lea   eax, [r8-1]              ; count - 1D6DD11  mov   [rbx+0x38], eax          ; 写回递减后的 countD6DD1F  movups xmm0, [rbx+rcx*8]       ; 读末项（16 字节）D6DD23  movups [rbx+r9*8], xmm0        ; 覆盖当前项 → 数组压缩D6DD3C  lea   rdx, [rip+0x125766d]     ; &#x22;All peers have synced...&#x22; (0x1FC53B0)D6DD93  cmp   dword [rbx+0x1d0], 5     ; 已经是 Ready(5) ？D6DDB1  mov   dword [rbx+0x1d0], 5     ; 置 Ready(5)D6DDC4  jmp   qword [r8+0x470]         ; 经会话对象虚表尾调用回报 host"><div></div></button></div></figure></div>
-<p>从这段指令序列可以还原出这样一个结构和一趟遍历——地址算术里 <code>r9 = 2·(i+4)</code>、寻址 <code>[rbx+r9*8]</code> 折算出<strong>元素步长 16 字节、数组基址在 <code>+0x40</code></strong>，<code>movups</code> 一次搬 16 字节正好是一整项：</p>
-<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="c"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#99A0A6;--1:#616972">// 从 0xD6DCD0 的指令序列还原</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#F97583;--1:#BF3441">struct</span><span style="--0:#E1E4E8;--1:#24292E"> SyncPeer</span><span style="--0:#99A0A6;--1:#616972">          // 16 字节步长</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">{</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">uint64_t</span><span style="--0:#E1E4E8;--1:#24292E"> peer_id;</span><span style="--0:#99A0A6;--1:#616972">    // +0x00</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">bool</span><span style="--0:#E1E4E8;--1:#24292E">     added;</span><span style="--0:#99A0A6;--1:#616972">      // +0x08：已加入会话</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">bool</span><span style="--0:#E1E4E8;--1:#24292E">     synced;</span><span style="--0:#99A0A6;--1:#616972">     // +0x09：已完成同步</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span class="indent">    </span><span style="--0:#99A0A6;--1:#616972">// +0x0A..0x0F 填充</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">8</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">};</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">9</div></div><div class="code">
-</div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">10</div></div><div class="code"><span style="--0:#99A0A6;--1:#616972">// this: +0x38 count，+0x40 数组，+0x1d0 状态字段</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">11</div></div><div class="code"><span style="--0:#F97583;--1:#BF3441">void</span><span style="--0:#E1E4E8;--1:#24292E"> ClientSynchronizer::</span><span style="--0:#B392F0;--1:#6F42C1">poll_syncing_peers</span><span style="--0:#E1E4E8;--1:#24292E">()</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">12</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">{</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">13</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">uint32_t</span><span style="--0:#E1E4E8;--1:#24292E"> count </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> this->syncing_count;</span><span style="--0:#99A0A6;--1:#616972">               // [rcx+0x38]</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">14</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">for</span><span style="--0:#E1E4E8;--1:#24292E"> (</span><span style="--0:#F97583;--1:#BF3441">uint32_t</span><span style="--0:#E1E4E8;--1:#24292E"> i </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">0</span><span style="--0:#E1E4E8;--1:#24292E">; i </span><span style="--0:#F97583;--1:#BF3441">&#x3C;</span><span style="--0:#E1E4E8;--1:#24292E"> count; )</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">15</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">{</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">16</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">        </span></span><span style="--0:#E1E4E8;--1:#24292E">SyncPeer</span><span style="--0:#F97583;--1:#BF3441">*</span><span style="--0:#E1E4E8;--1:#24292E"> peer </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">&#x26;</span><span style="--0:#E1E4E8;--1:#24292E">this->syncing[i];</span><span style="--0:#99A0A6;--1:#616972">             // rbx+0x40 + 16*i</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">17</div></div><div class="code"><span class="indent">        </span><span style="--0:#F97583;--1:#BF3441">if</span><span style="--0:#E1E4E8;--1:#24292E"> (peer->added </span><span style="--0:#F97583;--1:#BF3441">&#x26;&#x26;</span><span style="--0:#E1E4E8;--1:#24292E"> peer->synced)</span><span style="--0:#99A0A6;--1:#616972">                // +8 &#x26;&#x26; +9</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">18</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">        </span></span><span style="--0:#E1E4E8;--1:#24292E">{</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">19</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">            </span></span><span style="--0:#E1E4E8;--1:#24292E">this->syncing[i] </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> this->syncing[</span><span style="--0:#F97583;--1:#BF3441">--</span><span style="--0:#E1E4E8;--1:#24292E">count];</span><span style="--0:#99A0A6;--1:#616972">  // movups 末项覆盖当前项</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">20</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">            </span></span><span style="--0:#E1E4E8;--1:#24292E">this->syncing_count </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> count;</span><span style="--0:#99A0A6;--1:#616972">                // 写回 [rbx+0x38]</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">21</div></div><div class="code"><span class="indent">            </span><span style="--0:#F97583;--1:#BF3441">continue</span><span style="--0:#E1E4E8;--1:#24292E">;</span><span style="--0:#99A0A6;--1:#616972">                                    // 不前进 i，复查换进来的项</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">22</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">        </span></span><span style="--0:#E1E4E8;--1:#24292E">}</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">23</div></div><div class="code"><span class="indent">        </span><span style="--0:#F97583;--1:#BF3441">++</span><span style="--0:#E1E4E8;--1:#24292E">i;</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">24</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">}</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">25</div></div><div class="code">
-</div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">26</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">if</span><span style="--0:#E1E4E8;--1:#24292E"> (count </span><span style="--0:#F97583;--1:#BF3441">!=</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">0</span><span style="--0:#E1E4E8;--1:#24292E">)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">27</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">{</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">28</div></div><div class="code"><span class="indent">        </span><span style="--0:#F97583;--1:#BF3441">return</span><span style="--0:#E1E4E8;--1:#24292E">;</span><span style="--0:#99A0A6;--1:#616972">                                          // 还有 peer 没同步，继续等</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">29</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">}</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">30</div></div><div class="code">
-</div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">31</div></div><div class="code"><span class="indent">    </span><span style="--0:#B392F0;--1:#6F42C1">log</span><span style="--0:#E1E4E8;--1:#24292E">(</span><span style="--0:#9ECBFF;--1:#032F62">"All peers have synced, sending to host that we are ready."</span><span style="--0:#E1E4E8;--1:#24292E">);</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">32</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">if</span><span style="--0:#E1E4E8;--1:#24292E"> (this->state </span><span style="--0:#F97583;--1:#BF3441">==</span><span style="--0:#E1E4E8;--1:#24292E"> ClientState_Ready)</span><span style="--0:#99A0A6;--1:#616972">               // cmp [rbx+0x1d0], 5</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">33</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">{</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">34</div></div><div class="code"><span class="indent">        </span><span style="--0:#F97583;--1:#BF3441">return</span><span style="--0:#E1E4E8;--1:#24292E">;</span><span style="--0:#99A0A6;--1:#616972">                                          // 幂等：已就绪则不重复回报</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">35</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">}</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">36</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">this->state </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> ClientState_Ready;</span><span style="--0:#99A0A6;--1:#616972">                     // mov [rbx+0x1d0], 5</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">37</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">session->vtable[</span><span style="--0:#F97583;--1:#BF3441">0x</span><span style="--0:#79B8FF;--1:#005CC5">470</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">/</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">8</span><span style="--0:#E1E4E8;--1:#24292E">](session);</span><span style="--0:#99A0A6;--1:#616972">                 // jmp [r8+0x470] 尾调用</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">38</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">}</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="// 从 0xD6DCD0 的指令序列还原struct SyncPeer          // 16 字节步长{    uint64_t peer_id;    // +0x00    bool     added;      // +0x08：已加入会话    bool     synced;     // +0x09：已完成同步    // +0x0A..0x0F 填充};// this: +0x38 count，+0x40 数组，+0x1d0 状态字段void ClientSynchronizer::poll_syncing_peers(){    uint32_t count = this->syncing_count;               // [rcx+0x38]    for (uint32_t i = 0; i < count; )    {        SyncPeer* peer = &#x26;this->syncing[i];             // rbx+0x40 + 16*i        if (peer->added &#x26;&#x26; peer->synced)                // +8 &#x26;&#x26; +9        {            this->syncing[i] = this->syncing[--count];  // movups 末项覆盖当前项            this->syncing_count = count;                // 写回 [rbx+0x38]            continue;                                    // 不前进 i，复查换进来的项        }        ++i;    }    if (count != 0)    {        return;                                          // 还有 peer 没同步，继续等    }    log(&#x22;All peers have synced, sending to host that we are ready.&#x22;);    if (this->state == ClientState_Ready)               // cmp [rbx+0x1d0], 5    {        return;                                          // 幂等：已就绪则不重复回报    }    this->state = ClientState_Ready;                     // mov [rbx+0x1d0], 5    session->vtable[0x470 / 8](session);                 // jmp [r8+0x470] 尾调用}"><div></div></button></div></figure></div>
-<p>三个字段偏移把整套机制钉死了：计数在 <code>+0x38</code>，每个 peer 的 <code>added</code>/<code>synced</code> 是相邻两个字节 <code>+8</code>/<code>+9</code>，状态字段在 <code>+0x1d0</code>，被写成常量 <code>5</code>（<code>Ready</code>），最后经会话对象虚表槽 <code>+0x470</code> 尾调用回报 host。屏障清空后先查一次 <code>[rbx+0x1d0]==5</code> 再置位，保证「回报就绪」是幂等的。client 不会自己宣布「开打」——它在一个由 host 主导的 ready 屏障上等待，全员到齐才推进。这就是 host 权威落到指令层面的样子。</p>
-<p>那个 <code>synced</code> 标志由谁置位，正好接回首节那条带参数的 RPC：<code>rpc_from_host_client_ready task=%d active_target=%d target=%d</code>。host 用它告诉 client「推进到哪个同步任务」，<code>task</code> 是当前任务索引、<code>target</code>/<code>active_target</code> 是要抵达的目标。每完成一项登记的同步工作（<code>on_synchronized_tasks_started</code>/<code>_done</code> 成对进出、<code>Performing synced task %s</code> 逐项打印），对应 peer 的 <code>synced</code> 就被置上；屏障函数每轮轮询这张数组，直到没有 <code>synced=0</code> 的项。于是「host 下发推进指令 → client 完成任务置 synced → 屏障清空回报 ready」构成一个闭环，推进的节奏握在 host 手里。</p>
-<svg id="svg-netsync-barrier" viewBox="0 0 760 280" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto" role="img" aria-label="同步屏障流程：遍历 +0x40 处的待同步 peer 数组，剔除 +8 与 +9 都置位的项，count 归零后把 +0x1d0 状态写成 5 并经 +0x470 虚表回报 host">
+<h2 id="什么时候一起开打同步屏障">什么时候一起开打：同步屏障<a class="anchor" href="#什么时候一起开打同步屏障"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p><code>Synchronizing</code> 到 <code>Ready</code> 的跨越靠一个跨 peer 的屏障。这道屏障保证的是「不让任何一台机器抢跑」：所有人都完成了同步任务，战斗才开始。屏障两侧是成对登记的工作项（<code>on_synchronized_tasks_started</code> / <code>on_synchronized_tasks_done</code>，单项执行时打印 <code>Performing synced task %s</code>），这些工作项在每台机器上成对进入、成对退出。</p>
+<p>client 侧的判定逻辑很简单，可以完整还原出来。同步器维护一张「待同步 peer」表，每一项带两个标志：这个 peer 是否已加入会话、是否已完成同步。每一轮把两个标志都为真的 peer 移出表；表清空，就代表全员到齐：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="c"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#99A0A6;--1:#616972">// 待同步 peer 表：每项两个标志——已加入、已同步。</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#99A0A6;--1:#616972">// 每轮移出“既加入又同步”的 peer；表清空 = 全员就绪。</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#F97583;--1:#BF3441">void</span><span style="--0:#E1E4E8;--1:#24292E"> ClientSynchronizer::</span><span style="--0:#B392F0;--1:#6F42C1">poll_syncing_peers</span><span style="--0:#E1E4E8;--1:#24292E">()</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">{</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">for</span><span style="--0:#E1E4E8;--1:#24292E"> (</span><span style="--0:#F97583;--1:#BF3441">uint32_t</span><span style="--0:#E1E4E8;--1:#24292E"> i </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">0</span><span style="--0:#E1E4E8;--1:#24292E">; i </span><span style="--0:#F97583;--1:#BF3441">&#x3C;</span><span style="--0:#E1E4E8;--1:#24292E"> syncing_count; )</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">{</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span class="indent">        </span><span style="--0:#F97583;--1:#BF3441">if</span><span style="--0:#E1E4E8;--1:#24292E"> (</span><span style="--0:#FFAB70;--1:#AE4B07">peers</span><span style="--0:#E1E4E8;--1:#24292E">[i].added </span><span style="--0:#F97583;--1:#BF3441">&#x26;&#x26;</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#FFAB70;--1:#AE4B07">peers</span><span style="--0:#E1E4E8;--1:#24292E">[i].synced)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">8</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">        </span></span><span style="--0:#E1E4E8;--1:#24292E">{</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">9</div></div><div class="code"><span class="indent">            </span><span style="--0:#FFAB70;--1:#AE4B07">peers</span><span style="--0:#E1E4E8;--1:#24292E">[i] </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#FFAB70;--1:#AE4B07">peers</span><span style="--0:#E1E4E8;--1:#24292E">[</span><span style="--0:#F97583;--1:#BF3441">--</span><span style="--0:#E1E4E8;--1:#24292E">syncing_count];</span><span style="--0:#99A0A6;--1:#616972">   // 用末项填补空位</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">10</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">        </span></span><span style="--0:#E1E4E8;--1:#24292E">}</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">11</div></div><div class="code"><span class="indent">        </span><span style="--0:#F97583;--1:#BF3441">else</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">12</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">        </span></span><span style="--0:#E1E4E8;--1:#24292E">{</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">13</div></div><div class="code"><span class="indent">            </span><span style="--0:#F97583;--1:#BF3441">++</span><span style="--0:#E1E4E8;--1:#24292E">i;</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">14</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">        </span></span><span style="--0:#E1E4E8;--1:#24292E">}</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">15</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">}</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">16</div></div><div class="code">
+</div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">17</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">if</span><span style="--0:#E1E4E8;--1:#24292E"> (syncing_count </span><span style="--0:#F97583;--1:#BF3441">></span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">0</span><span style="--0:#E1E4E8;--1:#24292E">)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">18</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">{</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">19</div></div><div class="code"><span class="indent">        </span><span style="--0:#F97583;--1:#BF3441">return</span><span style="--0:#E1E4E8;--1:#24292E">;</span><span style="--0:#99A0A6;--1:#616972">                                  // 还有人没同步，继续等</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">20</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">}</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">21</div></div><div class="code">
+</div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">22</div></div><div class="code"><span class="indent">    </span><span style="--0:#B392F0;--1:#6F42C1">log</span><span style="--0:#E1E4E8;--1:#24292E">(</span><span style="--0:#9ECBFF;--1:#032F62">"All peers have synced, sending to host that we are ready."</span><span style="--0:#E1E4E8;--1:#24292E">);</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">23</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">state </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> ClientState_Ready;</span><span style="--0:#99A0A6;--1:#616972">                   // 状态置为 Ready</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">24</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">session-></span><span style="--0:#B392F0;--1:#6F42C1">notify_host_ready</span><span style="--0:#E1E4E8;--1:#24292E">();</span><span style="--0:#99A0A6;--1:#616972">                // 经会话回报 host</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">25</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">}</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="// 待同步 peer 表：每项两个标志——已加入、已同步。// 每轮移出“既加入又同步”的 peer；表清空 = 全员就绪。void ClientSynchronizer::poll_syncing_peers(){    for (uint32_t i = 0; i < syncing_count; )    {        if (peers[i].added &#x26;&#x26; peers[i].synced)        {            peers[i] = peers[--syncing_count];   // 用末项填补空位        }        else        {            ++i;        }    }    if (syncing_count > 0)    {        return;                                  // 还有人没同步，继续等    }    log(&#x22;All peers have synced, sending to host that we are ready.&#x22;);    state = ClientState_Ready;                   // 状态置为 Ready    session->notify_host_ready();                // 经会话回报 host}"><div></div></button></div></figure></div>
+<p>要点在最后三行：屏障清空后，client 把自己的状态字段写成 <code>Ready</code>，再经会话对象回报 host。也就是说，<strong>client 从不自己宣布「开打」</strong>——它在一个由 host 主导的就绪屏障上等待，全员到齐才推进。这就是「host 权威」落到最细一层的样子：连「大家准备好了吗」这个判断，最终也是汇报给 host、由 host 侧收齐。</p>
+<p>那个「已同步」标志由谁置上？正好接回第一节那条带参数的指令：host 用 <code>client_ready</code>（带 <code>task</code> / <code>active_target</code> / <code>target</code> 三个参数）告诉 client「推进到哪个同步任务」，client 每完成一项登记的工作就把对应标志置真。于是「host 下发推进 → client 完成任务 → 屏障清空回报就绪」构成一个闭环，节奏始终握在 host 手里。</p>
+<svg id="svg-netsync-barrier" viewBox="0 0 760 250" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto" role="img" aria-label="同步屏障流程：遍历待同步 peer 表，移出已加入且已同步的项，表清空后把状态置为 Ready 并回报 host，否则继续等待">
   <style>
     #svg-netsync-barrier .b{fill:none;stroke:currentColor;stroke-width:1.4}
     #svg-netsync-barrier .fill{fill:currentColor;fill-opacity:0.08;stroke:currentColor;stroke-width:1.4}
     #svg-netsync-barrier .t{fill:currentColor;font-family:sans-serif;font-size:11.5px}
     #svg-netsync-barrier .s{fill:currentColor;font-family:sans-serif;font-size:10px;opacity:0.82}
-    #svg-netsync-barrier .m{fill:currentColor;font-family:monospace;font-size:9.5px}
   </style>
   <defs><marker id="nb-a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="currentColor"></path></marker></defs>
-  <text class="s" x="120" y="28" text-anchor="middle">待同步数组 this+0x40（步长 16）</text>
-  <rect class="b" x="24" y="38" width="192" height="24"></rect>
-  <text class="m" x="34" y="54">peer A  +8=1 +9=1</text>
-  <rect class="fill" x="24" y="66" width="192" height="24"></rect>
-  <text class="m" x="34" y="82">peer B  +8=1 +9=0</text>
-  <rect class="b" x="24" y="94" width="192" height="24"></rect>
-  <text class="m" x="34" y="110">peer C  +8=1 +9=1</text>
-  <text class="s" x="120" y="136" text-anchor="middle">count = [this+0x38]</text>
-  <path class="b" d="M216 78 L272 78" marker-end="url(#nb-a)"></path>
-  <rect class="b" x="274" y="52" width="184" height="52"></rect>
-  <text class="t" x="366" y="74" text-anchor="middle">+8 &#x26;&#x26; +9 → 剔除</text>
-  <text class="s" x="366" y="92" text-anchor="middle">末项 movups 覆盖，count--</text>
-  <path class="b" d="M366 104 L366 146" marker-end="url(#nb-a)"></path>
-  <rect class="b" x="274" y="146" width="184" height="40"></rect>
-  <text class="t" x="366" y="171" text-anchor="middle">count == 0 ?</text>
-  <path class="b" d="M458 166 L520 166" marker-end="url(#nb-a)"></path>
-  <text class="s" x="489" y="158" text-anchor="middle">是</text>
-  <path class="b" d="M366 186 L366 232 L274 232 L274 174" stroke-dasharray="5 4" marker-end="url(#nb-a)"></path>
-  <text class="s" x="300" y="252" text-anchor="middle">否：继续等</text>
-  <rect class="fill" x="522" y="142" width="214" height="52"></rect>
-  <text class="t" x="629" y="164" text-anchor="middle">[this+0x1d0] = 5 (Ready)</text>
-  <text class="s" x="629" y="182" text-anchor="middle">jmp [session+0x470] 回报 host</text>
+  <text class="s" x="116" y="30" text-anchor="middle">待同步 peer 表</text>
+  <rect class="b" x="28" y="42" width="176" height="26"></rect>
+  <text class="s" x="40" y="59">peer A · 已同步</text>
+  <rect class="fill" x="28" y="72" width="176" height="26"></rect>
+  <text class="s" x="40" y="89">peer B · 未同步</text>
+  <rect class="b" x="28" y="102" width="176" height="26"></rect>
+  <text class="s" x="40" y="119">peer C · 已同步</text>
+  <path class="b" d="M204 85 L264 85" marker-end="url(#nb-a)"></path>
+  <rect class="b" x="266" y="58" width="180" height="52"></rect>
+  <text class="t" x="356" y="80" text-anchor="middle">已加入且已同步</text>
+  <text class="s" x="356" y="98" text-anchor="middle">→ 移出表</text>
+  <path class="b" d="M356 110 L356 150" marker-end="url(#nb-a)"></path>
+  <rect class="b" x="266" y="150" width="180" height="40"></rect>
+  <text class="t" x="356" y="175" text-anchor="middle">表清空？</text>
+  <path class="b" d="M446 170 L520 170" marker-end="url(#nb-a)"></path>
+  <text class="s" x="483" y="162" text-anchor="middle">是</text>
+  <path class="b" d="M356 190 L356 224 L266 224 L266 174" stroke-dasharray="5 4" marker-end="url(#nb-a)"></path>
+  <text class="s" x="296" y="242" text-anchor="middle">否：继续等</text>
+  <rect class="fill" x="522" y="146" width="212" height="48"></rect>
+  <text class="t" x="628" y="168" text-anchor="middle">置为 Ready</text>
+  <text class="s" x="628" y="185" text-anchor="middle">回报 host</text>
 </svg>
-<h2 id="确定性对账只同步-seed用-levelgenerationmismatch-兜底">确定性对账：只同步 seed，用 <code>LevelGenerationMismatch</code> 兜底<a class="anchor" href="#确定性对账只同步-seed用-levelgenerationmismatch-兜底"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>大状态不靠网络搬运。地图是每个 peer 用同一个 seed 在本地各自生成的——<a href="/blog/posts/42-helldivers2-map-generation-pipeline/">上一篇讲地图生成流水线</a>时已经看到整条生成跑在客户端 <code>game.dll</code> 里、seed 上行到后端。网络侧只需保证 seed 一致，再用哈希对账。</p>
-<p>对账的证据是一条 client 侧 JSON 分析事件 <code>LevelGenerationMismatch</code>（<code>0x1FBA1F0</code>）。它的发射函数在 <code>0xB783B0–0xB786C0</code>，逐字段把内容拼出来，末尾以事件名长度 22（<code>mov r9d, 0x16</code>，位于 <code>0xB78683</code>）调用共享事件发射器：</p>
-<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">seed            (0x1FBA100)  本局初始种子</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">host_hash       (0x1FBA170)  host 侧生成结果哈希</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">client_hash     (0x1FBA180)  本 client 侧生成结果哈希</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">mismatch_step   (0x1FBA1A8)  第一处对不上的 pass 名</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">host_platform / client_platform / host_cpu_name / client_cpu_name / host_gpu_name / client_gpu_name</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="seed            (0x1FBA100)  本局初始种子host_hash       (0x1FBA170)  host 侧生成结果哈希client_hash     (0x1FBA180)  本 client 侧生成结果哈希mismatch_step   (0x1FBA1A8)  第一处对不上的 pass 名host_platform / client_platform / host_cpu_name / client_cpu_name / host_gpu_name / client_gpu_name"><div></div></button></div></figure></div>
-<p>同一个 seed 喂进同一套 pass，host 和 client 本该得到逐 step 相同的哈希；一旦某个 step 的 <code>host_hash</code> 与 <code>client_hash</code> 不等，就把种子、分歧的 step 名和双方软硬件一起上报。载荷里同时带 <code>host_*</code> 和 <code>client_*</code> 两份哈希这一点本身就划清了边界：如果地图是 host 算好下发的，client 根本不需要一份独立的 <code>client_hash</code> 去跟 <code>host_hash</code> 比。<strong>联机同步的是种子，不是几何。</strong></p>
-<p>这也是把大状态放进 P2P 最省带宽的做法：确定性输入 + 事后校验，代替逐帧同步整张地图。代价是对确定性要求极高——载荷里连 CPU/GPU 名都记下来，正说明任何平台相关的浮点或迭代顺序差异都可能变成一次 <code>LevelGenerationMismatch</code>，得靠这些字段去归因。</p>
-<p>seed 本身也走遥测上行：<code>GameLoaded</code> 事件（<code>0x1FBA5B0</code>）携带 <code>is_host</code>、<code>seed</code>、<code>planet_hash</code>，确定性 JSON 键里 <code>,"seed":</code>（<code>0x1FBA100</code>）、<code>,"is_host":</code>（<code>0x1FBA600</code>）都在场。这和<a href="/blog/posts/42-helldivers2-map-generation-pipeline/">上一篇</a>里「生成跑在客户端、seed 上行到后端」是同一件事的两个面：seed 由 host 定、随 <code>GameLoaded</code> 上报，各 peer 用它本地生成，<code>LevelGenerationMismatch</code> 只在结果对不上时才发。后端因此既拿得到「这局用了哪个 seed」，又拿得到「谁和谁生成结果不一致」，而不必接收整张地图。</p>
-<h2 id="主机迁移集中在-0xd70970-一个函数里">主机迁移集中在 <code>0xD70970</code> 一个函数里<a class="anchor" href="#主机迁移集中在-0xd70970-一个函数里"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>host 会中途离开，所以会话权威必须能转移。迁移逻辑集中在 <code>0xD70970–0xD7159A</code> 一个函数内：<code>start_host_migration</code>（字符串 <code>0x1FC5778</code>，<code>lea</code> 于 <code>0xD70990</code>）和 <code>Sending migration state! (peer=%llx, state=%u)</code>（字符串 <code>0x1FC5738</code>，<code>lea</code> 于 <code>0xD71150</code>）都从这里发出。触发路径由日志串串起来：<code>Host has left! I'm the new host, migrating session! (new_host=%llx)</code>（<code>0x1FC4D70</code>）——host 掉线后，其余 peer 里推选出新 host，由它逐个把每个 peer 的当前 <code>state</code> 广播过去（<code>Sending migration state!</code> 里的 <code>state=%u</code> 正是上面那张枚举的数值），让全体在新权威下对齐。</p>
-<p>迁移期间的特殊性写在几处状态和参数里：<code>KickedMigration</code>（<code>0x1FC4CC0</code>）是迁移导致的踢出，<code>rpc_from_migrated_host_peer_state</code>（<code>0x1FC53F0</code>）是新 host 补发的 peer 状态，<code>lobby_host_propagation_timeout</code>（<code>0x1FC4F90</code>）约束新 lobby host 的传播时限。迁移不是重开一局，而是把权威和每个 peer 的进度平移到新 host 上继续——所以它复用的是同一套 peer state，而不是走一遍冷启动同步。</p>
-<h2 id="复制装备与战备的是-playerhistorysystem">复制装备与战备的是 PlayerHistorySystem<a class="anchor" href="#复制装备与战备的是-playerhistorysystem"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>真正在网络上复制、且能从类型信息看清的 gameplay 状态是装备与战备（loadout / stratagem）。它走两条 RPC：</p>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<table><thead><tr><th align="left">RPC 字符串</th><th align="left">RVA</th><th align="left">引用点</th></tr></thead><tbody><tr><td align="left"><code>rpc_sync_stratagems from %llx (stratagem count: %u)</code></td><td align="left"><code>0x1FAC650</code></td><td align="left"><code>0x621DE0</code>、<code>0xB0CA3A</code></td></tr><tr><td align="left"><code>rpc_sync_stratagem_changes from %llx (stratagem count: %u)</code></td><td align="left"><code>0x2016D88</code></td><td align="left">—</td></tr></tbody></table>
-<p>两条都带 peer id 和战备数量：一条同步整份战备，一条同步增量变更。承接的是 <code>PlayerHistorySystem</code>（<code>0x2016D70</code>），按 peer 保存一份 loadout 记录，字段名以 <code>phs.%s[%u].loadout.*</code> 形式出现：<code>primary</code>、<code>sidearm</code>、<code>throwable</code>、<code>stratagems[%u]</code>、<code>load_type</code>，另有 <code>peer_id</code>。</p>
-<p>历史系统还负责两件同步相关的事。一是每个 peer 有 <code>was_synced</code> 状态位，非活跃 peer 会被清理，清理函数在 <code>0x10146A2–0x10149AC</code>，打印 <code>Clearing [was_synced] status for peer %llx. is_inactive=%s, clean_up=%s</code>（<code>0x2016AC0</code>，<code>lea</code> 于 <code>0x10146DD</code>），批量清理时另有 <code>Clearing inactive players from history system clean_up: %s</code>（<code>0x2016B18</code>）。二是重连续用：<code>Found history, player is rejoining a previous game. Loadout is overridden with previous data.</code>（<code>0x2016E50</code>）——玩家掉线重进同一局，用历史里的 loadout 覆盖当前，省掉重新配装。<code>was_synced</code> 加「历史覆盖」，正是让「掉线再回来」不至于把队友的配置状态弄乱的那层机制。</p>
-<p>逐帧的实体、投射物和 AI 预算怎么复制，类型信息和静态引用给不出唯一答案；它们不像 loadout 那样留下清晰的 RPC 名与历史结构。刷怪那侧另有独立的 64 位 LCG（见刷怪相关分析），未发现它与会话 RPC 之间的调用边。</p>
-<h2 id="遥测通道和-gameplay-通道是两条独立的路">遥测通道和 gameplay 通道是两条独立的路<a class="anchor" href="#遥测通道和-gameplay-通道是两条独立的路"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>模块里有大量 <code>,"field":</code> 形式的 JSON 键，很容易被误当成同步协议。它们是后端<strong>分析遥测</strong>，和上面的 gameplay RPC 是两条独立通道。区分标志很清楚：遥测是拼 JSON 上报后端，gameplay 权威流转是 <code>rpc_from_host_*</code>。</p>
+<h2 id="大状态怎么对齐只同步-seed不同步几何">大状态怎么对齐：只同步 seed，不同步几何<a class="anchor" href="#大状态怎么对齐只同步-seed不同步几何"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>地图不靠网络搬运。每台机器用同一个 seed 在本地各自生成地图——<a href="/blog/posts/42-helldivers2-map-generation-pipeline/">上一篇讲地图生成流水线</a>时已经看到，整条生成跑在客户端 <code>game.dll</code> 里，只有 seed 上行到后端。网络侧要做的只是保证四台机器拿到的 seed 一致，然后用哈希核对结果。</p>
+<p>对账藏在一条 client 侧的事件 <code>LevelGenerationMismatch</code> 里。它逐字段拼出这样一组内容：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">seed            本局初始种子</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">host_hash       host 侧生成结果的哈希</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">client_hash     本机生成结果的哈希</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">mismatch_step   第一处对不上的生成阶段名</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">host / client 的 platform、cpu_name、gpu_name</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="seed            本局初始种子host_hash       host 侧生成结果的哈希client_hash     本机生成结果的哈希mismatch_step   第一处对不上的生成阶段名host / client 的 platform、cpu_name、gpu_name"><div></div></button></div></figure></div>
+<p>同一个 seed 喂进同一套生成阶段，host 和 client 本该逐步得到相同的哈希；一旦某一步的两个哈希对不上，就把种子、分歧的阶段名和双方软硬件一起上报。载荷里同时带 <code>host_hash</code> 和 <code>client_hash</code> 这一点本身就说明了方法：如果地图是 host 算好下发的，client 根本不需要一份独立的 <code>client_hash</code> 去比。<strong>联机同步的是种子，不是几何。</strong></p>
+<p>这是把大状态放进 P2P 最省带宽的做法——同步确定性输入 + 事后校验，代替逐帧同步整张地图。代价是对确定性要求极高，所以载荷里连 CPU/GPU 名都记下来：任何一处平台相关的浮点或迭代顺序差异都可能变成一次不匹配，得靠这些字段去归因。做自己的程序化内容时，这套「同步种子而非结果」的思路是最值得照搬的一块。</p>
+<h2 id="host-走了怎么办主机迁移">host 走了怎么办：主机迁移<a class="anchor" href="#host-走了怎么办主机迁移"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>host 会中途退出，所以会话权威必须能转移。迁移集中在一个函数里完成：host 掉线后，其余 peer 里推选出新 host，由它触发 <code>start_host_migration</code>，再逐个把每个 peer 的当前状态广播过去（日志 <code>Sending migration state! (peer=..., state=...)</code>，其中的 <code>state</code> 正是加入状态机那张枚举的数值）。新 host 上线的那一刻会打出 <code>Host has left! I'm the new host, migrating session!</code>。</p>
+<p>迁移期间的几处细节把它和「重开一局」区分开：被迁移波及而掉出的 peer 记为 <code>KickedMigration</code>，新 host 补发的 peer 状态走 <code>migrated_host_peer_state</code>，还有一个 <code>lobby_host_propagation_timeout</code> 约束新 lobby host 的传播时限。迁移复用的是同一套 peer 状态，把权威和每个人的进度平移到新 host 上继续，而不是让四个人从头再同步一遍。</p>
+<h2 id="什么东西真的在网上传装备与战备">什么东西真的在网上传：装备与战备<a class="anchor" href="#什么东西真的在网上传装备与战备"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>真正在网络上复制、又能看得清的 gameplay 状态是装备与战备（loadout / stratagem）。它走两条 RPC：一条 <code>rpc_sync_stratagems</code> 同步整份战备，一条 <code>rpc_sync_stratagem_changes</code> 同步增量变更，两条都带 peer id 和战备数量。承接的是一个玩家历史系统 <code>PlayerHistorySystem</code>，按 peer 保存一份 loadout 记录（主武器、副武器、投掷物、战备列表、装备类型）。</p>
+<p>这个历史系统还管两件同步相关的事。一是每个 peer 带一个「已同步」状态位，非活跃的 peer 会被清理出历史系统（日志 <code>Clearing [was_synced] status for peer ...</code>）。二是重连续用：玩家掉线重进同一局时，<code>Found history, player is rejoining a previous game. Loadout is overridden with previous data.</code>——用历史里的装备覆盖当前，省掉重新配装。「已同步位 + 历史覆盖」合起来，正是让「掉线再回来」不至于把队友的配置状态搞乱的那层机制。</p>
+<p>至于逐帧的实体、投射物和 AI 预算怎么复制，它们不像装备那样留下清晰的 RPC 名和历史结构，从静态一侧看不出唯一答案，得靠实际网络流量才能定。</p>
+<h2 id="别把遥测当成同步协议">别把遥测当成同步协议<a class="anchor" href="#别把遥测当成同步协议"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>游戏模块里还有大量 <code>,"字段":</code> 形式的 JSON 键，很容易被误当成同步协议。它们其实是上报后端的<strong>分析遥测</strong>，和上面的 gameplay RPC 是两条独立的路。区分标志很清楚：遥测是拼 JSON 上报统计，gameplay 权威流转是 <code>rpc_from_host_*</code>。</p>
 
 
 
@@ -372,19 +222,57 @@ const nightStartHour = 18;
 
 
 
-
-
-
-
-
-
-
-
-
-
-<table><thead><tr><th align="left">通道</th><th align="left">事件 / 载荷</th><th align="left">RVA</th></tr></thead><tbody><tr><td align="left">遥测</td><td align="left"><code>NetworkStats</code>：<code>ping</code>、<code>packet_loss</code>、<code>packet_loss_accurate</code>、<code>player_count</code>、<code>loadtime_level_generation</code>、<code>loadtime_total</code></td><td align="left"><code>0x1FBA560</code>（发射 <code>0xB79B50–0xB79D10</code>）</td></tr><tr><td align="left">遥测</td><td align="left"><code>NetworkProfile</code>：<code>lobby_id</code>、<code>nat_type</code>、<code>wifi</code>、<code>lobby_host</code>、<code>disconnected_peer</code></td><td align="left"><code>0x1FBA3A8</code></td></tr><tr><td align="left">遥测</td><td align="left"><code>GameLoaded</code>：<code>is_host</code>、<code>seed</code>、<code>planet_hash</code></td><td align="left"><code>0x1FBA5B0</code></td></tr><tr><td align="left">遥测</td><td align="left"><code>LobbyJoinFailed</code>：<code>error_code</code>、<code>reason</code>；另有 <code>PeerRemoved</code>、<code>ClientDisconnected</code>、<code>EndpointErrorEvent</code>、<code>GameStart</code>、<code>GameEnd</code></td><td align="left"><code>0x1FBA480</code> / <code>0x1FBA438</code> / <code>0x1FBA448</code></td></tr><tr><td align="left">gameplay</td><td align="left"><code>rpc_from_host_*</code>（见首节表）：会话权威指令</td><td align="left"><code>0x1FC5438</code> 起</td></tr></tbody></table>
-<p>账号标识用 <code>steam_account_id</code>（<code>0x1FBCA9A</code>）、<code>np_account_id</code>、<code>psn_account</code>，这些也只出现在遥测里。判据是：遥测描述「会话里已经发生了什么」，供后端统计和排障，它的 <code>NetworkStats</code> 里连 <code>ping</code> 和 <code>packet_loss</code> 都是<strong>测量结果</strong>而非控制输入；gameplay 的权威流转始终走 <code>rpc_from_host_*</code>。看到一堆网络字段名，不等于看到了同步协议本身——这也是这个主题最容易失真的地方。</p>
+<table><thead><tr><th align="left">通道</th><th align="left">典型内容</th></tr></thead><tbody><tr><td align="left">遥测 <code>NetworkStats</code></td><td align="left"><code>ping</code>、<code>packet_loss</code>、<code>player_count</code>、<code>loadtime_level_generation</code>——都是测量结果</td></tr><tr><td align="left">遥测 <code>NetworkProfile</code></td><td align="left"><code>lobby_id</code>、<code>nat_type</code>、<code>wifi</code>、<code>lobby_host</code>、<code>disconnected_peer</code></td></tr><tr><td align="left">遥测 <code>GameLoaded</code></td><td align="left"><code>is_host</code>、<code>seed</code>、<code>planet_hash</code>——把 seed 上报后端，正对应上一篇的「seed 上行」</td></tr><tr><td align="left">gameplay <code>rpc_from_host_*</code></td><td align="left">会话权威指令：就绪、踢人、迁移状态</td></tr></tbody></table>
+<p>关键在于 <code>NetworkStats</code> 里连 <code>ping</code> 和 <code>packet_loss</code> 都是<strong>被测量出来的数字</strong>，不是控制输入——它描述「会话里已经发生了什么」，供后端统计和排障。看到一堆网络字段名，不等于看到了同步协议本身，这是这个主题最容易搞混的地方。</p>
 <h2 id="结论">结论<a class="anchor" href="#结论"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>Helldivers 2 的联机是一套 host 权威的 P2P 同步：一名 peer 持有会话权威并用 <code>rpc_from_host_*</code> 单向驱动其余 client；client 走 <code>Joining → … → Ready → Alive</code> 状态机，加入的每次退出都归一成枚举里的一个状态码；<code>0xD6DCD0</code> 的屏障函数把「全员就绪」实现成一次数组压缩，count 归零后把 <code>+0x1d0</code> 写成 <code>5</code> 再经 <code>+0x470</code> 虚表回报 host；地图这类大状态用同一 seed 各自本地生成、靠 <code>LevelGenerationMismatch</code> 的 <code>host_hash</code>/<code>client_hash</code> 对账兜底；host 掉线由 <code>0xD70970</code> 的迁移函数平移权威；装备战备走 <code>PlayerHistorySystem</code> 复制并支持 <code>was_synced</code> + 历史覆盖的重连续用。</p>
-<p>做自己项目时最值得照搬的是那道<strong>确定性对账</strong>：能用共享输入本地重建的大状态（地图、程序化内容），就同步种子而不是同步结果，再用逐步哈希兜底一致性——带宽省在刀刃上，代价是把「确定性」当成硬约束来维护，这正是 <code>LevelGenerationMismatch</code> 存在的理由。至于每条 RPC 的线上字节格式、migration state 与 stratagem sync 的 wire 编码，以及 Steam 传输可靠性层，落在独立网络模块与运行时流量里，代码映像给不出，得靠 <code>network_logs</code> 抓包或活体 trace 才能定。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-u3wiumwa> <div class="nav-cell" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/42-helldivers2-map-generation-pipeline/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa> <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8592;</span> 上一篇
+<p>Helldivers 2 的联机是一套不靠专用服务器的 host 权威 P2P 同步：一名玩家持有会话权威并用 <code>rpc_from_host_*</code> 单向驱动其余人；加入走状态机、失败归一成状态码；开打前所有人在一道同步屏障上对齐，client 全员到齐才把自己置为就绪并回报 host；地图这类大状态用同一 seed 各自本地生成、靠 <code>LevelGenerationMismatch</code> 的哈希对账兜底；host 掉线由主机迁移平移权威；装备战备走玩家历史系统复制并支持重连续用。</p>
+<p>如果只带走一条，那应该是<strong>确定性对账</strong>：凡是能用共享输入本地重建的大状态（地图、程序化内容），就同步种子而不是同步结果，再用逐步哈希兜底一致性。带宽省在刀刃上，代价是把「确定性」当成硬约束来维护——这正是 <code>LevelGenerationMismatch</code> 存在的理由。至于每条 RPC 的线上字节格式和 Steam 传输可靠性层，位于独立的网络模块和运行时流量里，静态一侧看不到，得靠网络抓包才能补齐。</p>
+<h2 id="附锚点索引">附：锚点索引<a class="anchor" href="#附锚点索引"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>方法上面已经讲完，这里给想在同一份 <code>game.dll</code>（Build <code>24036910</code>）上复核的读者留一张位置表。每个机制的关键符号和它所在的函数区间如下：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th align="left">机制</th><th align="left">关键符号</th><th align="left">位置</th></tr></thead><tbody><tr><td align="left">host 权威指令</td><td align="left"><code>rpc_from_host_client_ready</code> 一族</td><td align="left">字符串自 <code>0x1FC5438</code> 起</td></tr><tr><td align="left">同步屏障</td><td align="left"><code>All peers have synced...</code>，置 Ready 后回报 host</td><td align="left">函数 <code>0xD6DCD0</code></td></tr><tr><td align="left">确定性对账</td><td align="left"><code>LevelGenerationMismatch</code> 发射器</td><td align="left">函数 <code>0xB783B0</code></td></tr><tr><td align="left">主机迁移</td><td align="left"><code>start_host_migration</code>、<code>Sending migration state!</code></td><td align="left">函数 <code>0xD70970</code></td></tr><tr><td align="left">装备复制</td><td align="left"><code>rpc_sync_stratagems</code>、<code>PlayerHistorySystem</code></td><td align="left"><code>0x1FAC650</code> / <code>0x2016D70</code></td></tr><tr><td align="left">非活跃清理</td><td align="left"><code>Clearing [was_synced] status...</code></td><td align="left">函数 <code>0x10146A2</code></td></tr><tr><td align="left">分析遥测</td><td align="left"><code>NetworkStats</code> / <code>NetworkProfile</code> / <code>GameLoaded</code></td><td align="left"><code>0x1FBA560</code> / <code>0x1FBA3A8</code> / <code>0x1FBA5B0</code></td></tr></tbody></table> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-u3wiumwa> <div class="nav-cell" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/42-helldivers2-map-generation-pipeline/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa> <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8592;</span> 上一篇
 </span> <span class="nav-title" data-astro-cid-u3wiumwa>预制池、种子与烘焙：Helldivers 2 地图生成流水线</span> </a> </div> <div class="nav-cell next" data-astro-cid-u3wiumwa>  </div> </nav> </div> </div>   <footer class="micro"> <a class="back" href="/blog/minimalist/"> <span class="arrow" aria-hidden="true">&#8592;</span> 返回技术索引 </a> <span class="copy">&copy; 2026 Shrei</span> <span class="colophon">Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div>  </body></html>
