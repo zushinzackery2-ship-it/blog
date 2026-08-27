@@ -207,8 +207,8 @@ float Saw(float b, float t)
 }
 
 // 返回 vec2(dropMask, trailMask)：
-//   dropMask  主雨滴 + 拖尾里的小水珠，用于折射与高光；
-//   trailMask 湿痕，用于控制背景模糊。
+//   dropMask  主雨滴本体，用于折射与高光；
+//   trailMask 紧贴雨滴的极短尾迹湿渍，只驱动背景柔化与轻微变暗。
 vec2 DropLayer2(vec2 uv, float t)
 {
     vec2 UV = uv;
@@ -267,36 +267,46 @@ vec2 DropLayer2(vec2 uv, float t)
     float d = length((st - p) * a.yx);
     float mainDrop = S(0.4, 0.0, d);
 
-    // 湿痕（结构性重设计）：可见残留不再包含任何连续竖条 mask。
-    // 此前各版的 trailCore / trailStain（贴着雨滴向上的连续湿线、残留窄带）
-    // 已彻底废弃——无论多窄、多碎、多短，只要是连着雨滴的竖条几何，
-    // 都会读成「流星尾」。真实窗玻璃的残留只有两类：
+    // 尾迹（结构性重设计）：任何「跟随雨滴列坐标 x、沿竖直方向延伸」的
+    // 残留几何——连续湿线、残留窄带、虚线珠串——都已彻底废弃。它们无论
+    // 多碎多随机，读起来都是「大滴 + 正上方一串」的流星结构。
     //
-    //   1. 路径上稀疏、随机的残留微滴（下方 droplets，走雨滴通道，
-    //      获得与雨滴本体完全相同的折射 + 高光处理）；
-    //   2. 极弱、无锐利边界的区域性水膜（trail 通道只剩这个）：横向是
-    //      覆盖大半个格宽的软梯度（画不出管状轮廓），纵向 r² 快衰减，
-    //      并按逐滴留痕率随机丢弃。它只驱动壁纸柔化与轻微变暗。
+    // 运动雨滴只保留紧贴尾迹、约一个滴径长的短湿渍（wake 门控 r > 0.75，
+    // 离滴即消失），只进 trail 通道（柔化 + 轻微变暗），不带珠串、
+    // 不带高光。其余残留全部由与雨滴脱钩的 StaticResidue 提供（见下）。
     float r = sqrt(S(1.0, y, st.y));
     float cd = abs(st.x - x);
     float trailFront = S(-0.02, 0.02, st.y - y);
+    float wake = S(0.75, 0.97, r);
+    float trail = S(0.25, 0.0, cd) * wake * trailFront;
 
-    float leave = smoothstep(0.35, 0.9, fract(n.y * 7.9 + n.x * 3.3));
-    float film = S(0.42, 0.0, cd) * r * r * leave;
-    float trail = film * trailFront;
+    return vec2(mainDrop, trail);
+}
 
-    // 残留微滴。参考实现的等距整齐串珠会排成一条竖直虚线，这里逐珠随机：
-    // 约四成珠位直接丢弃，其余在位置（横向 ±0.08 格、纵向 ±0.15 珠距）
-    // 与大小（0.65~1.15 倍）上抖动，读感是路径上散落的水珠而非虚线。
-    vec3 h = N13(floor(UV.y * 10.0) * 74.3 + id.x * 21.7 + 57.0);
-    float keep = step(0.4, h.z);
-    float y2 = fract(UV.y * 10.0) + (st.y - 0.5) + (h.y - 0.5) * 0.3;
-    float dd = length(st - vec2(x + (h.x - 0.5) * 0.16, y2));
-    float beadSize = 0.3 * mix(0.65, 1.15, fract(h.z * 9.3));
-    float droplets = S(beadSize, 0.0, dd) * keep;
+// 静态残留：与运动雨滴完全脱钩的凝结/斑驳，用自己的网格与随机，
+// 不参与任何雨滴列坐标——这是「东一块西一块的水珠」的来源。
+//   x 通道：散落的静态微珠（走雨滴通道，获得与雨滴一致的折射 + 高光）；
+//   y 通道：低频、圆形软边、无方向性的潮湿斑块（只驱动柔化与轻微变暗）。
+vec2 StaticResidue(vec2 uv)
+{
+    // 微珠：约四分之一的格子留一颗，位置 / 大小逐格随机。
+    vec2 g = uv * 14.0;
+    vec2 id = floor(g);
+    vec3 n = N13(id.x * 214.5 + id.y * 671.3);
+    vec2 p = (n.xy - 0.5) * 0.55;
+    float d = length(fract(g) - 0.5 - p);
+    float size = mix(0.1, 0.2, fract(n.z * 13.7));
+    float bead = S(size, 0.0, d) * step(0.72, n.z);
 
-    float m = mainDrop + droplets * r * trailFront;
-    return vec2(m, trail);
+    // 斑驳水膜：低频斑点场，圆形软边，覆盖率约三成。
+    vec2 g2 = uv * 3.4 + 17.0;
+    vec2 id2 = floor(g2);
+    vec3 n2 = N13(id2.x * 87.1 + id2.y * 412.7);
+    vec2 p2 = (n2.xy - 0.5) * 0.6;
+    float d2 = length(fract(g2) - 0.5 - p2);
+    float blob = S(0.55, 0.1, d2) * smoothstep(0.55, 0.95, n2.z);
+
+    return vec2(bead, blob);
 }
 
 // 凝结在玻璃上的细小水雾，不下落，只缓慢明灭。
@@ -314,20 +324,21 @@ float StaticDrops(vec2 uv, float t)
     return S(0.3, 0.0, d) * fract(n.z * 10.0) * fade;
 }
 
-// 三层合成：水雾 + 主雨滴层 + 1.85 倍缩放的远层（制造景深）。
+// 合成：水雾 + 静态残留（微珠 + 斑驳） + 主雨滴层 + 1.85 倍缩放的远层。
 vec2 Drops(vec2 uv, float t, float l0, float l1, float l2)
 {
     float s = StaticDrops(uv, t) * l0;
+    vec2 res = StaticResidue(uv) * saturate(l0);
     vec2 m1 = DropLayer2(uv, t) * l1;
     vec2 m2 = DropLayer2(uv * 1.85, t) * l2;
 
-    float c = s + m1.x + m2.x;
+    float c = s + res.x + m1.x + m2.x;
     c = S(0.3, 1.0, c);
 
     // 湿痕权重：m1 / m2 在上面已各自乘过本层权重（l1 / l2），直接取 max 即可。
     // 参考实现在这里又错乘了一次相邻层权重（m1.y * l0、m2.y * l1），
     // 后果是小雨时远层雨滴明明在下落（l2 > 0）、湿痕却被 l1 = 0 整体抹掉。
-    return vec2(c, max(m1.y, m2.y));
+    return vec2(c, max(max(m1.y, m2.y), res.y));
 }
 `,Qr=new WeakMap;function Dt(r,t,e){let n=Qr.get(t);return n||(n=new Map,Qr.set(t,n)),n.has(e)||n.set(e,r.getUniformLocation(t,e)),n.get(e)}function te(r,t,e,n){const o=Dt(r,t,e);o!==null&&r.uniform1i(o,n)}function T(r,t,e,n){const o=Dt(r,t,e);o!==null&&r.uniform1f(o,n)}function Z(r,t,e,n,o){const i=Dt(r,t,e);i!==null&&r.uniform2f(i,n,o)}function Ce(r,t,e,n,o,i){const a=Dt(r,t,e);a!==null&&r.uniform3f(a,n,o,i)}function Jr(r,t,e,n,o,i,a){const s=Dt(r,t,e);s!==null&&r.uniform4f(s,n,o,i,a)}const Ms=`
 uniform sampler2D uWallpaperMip;
@@ -430,17 +441,17 @@ void main()
 
     // 折射：法线在 y 向上空间，换算到屏幕像素时翻回 y 向下。
     // 湿痕水膜的折射默认关闭（uTrailRefraction = 0）：折射梯度会沿水膜
-    // 边缘画出亮暗几何，正是「流星尾」观感的来源之一。残留微滴走雨滴
-    // 通道（n），自带完整折射；水膜只保留柔化与变暗两种显形。
+    // 边缘画出亮暗几何。静态微珠走雨滴通道（n），自带完整折射；
+    // 尾迹湿渍与斑驳水膜只保留柔化与变暗两种显形。
     vec2 refractOffset = vec2(n.x, -n.y) * uRefractionStrength * uResolution.y;
     refractOffset += vec2(tn.x, -tn.y) * uTrailRefraction * uResolution.y * (1.0 - insideDrop);
     vec4 background = composeBackground(worldPixel, worldPixel + refractOffset, focus);
     vec3 col = background.rgb;
 
-    // 湿痕显形：只做水膜透光率轻微下降（变暗）。水膜横向是覆盖大半个
-    // 格宽的软梯度，不存在锐利边界，变暗读感是「潮湿区域」而非暗管。
-    // 拖尾不加任何亮边（默认 uTrailSheen = 0，真实雨渍不发光）；
-    // 高光只属于雨滴本体（下方的 rim / specular 按 dropMask 门控）。
+    // 湿痕显形：只做水膜透光率轻微下降（变暗）。trail 通道里只有
+    // 「紧贴雨滴的极短尾迹」和「与雨滴脱钩的低频斑驳水膜」，都是圆软
+    // 无方向的几何，变暗读感是「潮湿区域」而非暗管。不加任何亮边
+    // （默认 uTrailSheen = 0）；高光只属于雨滴与静态微珠本体。
     col *= 1.0 - uTrailDarkening * dryTrail;
     float trailEdge = S(0.15, 0.45, length(tn) * 30.0);
     col += vec3(uTrailSheen * trailEdge * dryTrail);
