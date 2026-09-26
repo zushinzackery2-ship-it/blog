@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>Windows 控制流追踪：用硬件断点与 VEH 实现基本块级 trace · Shrei</title><meta name="description" content="在 Windows x64 上用 DR0-DR3 硬件断点和 VEH 异常分发实现低开销基本块级控制流追踪。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/08-windows-dr-veh-control-flow-tracing/"><meta property="og:title" content="Windows 控制流追踪：用硬件断点与 VEH 实现基本块级 trace · Shrei"><meta property="og:description" content="在 Windows x64 上用 DR0-DR3 硬件断点和 VEH 异常分发实现低开销基本块级控制流追踪。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/08-windows-dr-veh-control-flow-tracing/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><script>(function(){const dayStartHour = 6;
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>Windows 控制流追踪：用硬件断点与 VEH 实现基本块级 trace · Shrei</title><meta name="description" content="DR0-DR3 提供少量执行观察点，VEH 在命中后记录现场并轮换观察位置。这种基本块追踪减少了逐指令异常，也让线程状态与间接跳转成为设计重点。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/08-windows-dr-veh-control-flow-tracing/"><meta property="og:title" content="Windows 控制流追踪：用硬件断点与 VEH 实现基本块级 trace · Shrei"><meta property="og:description" content="DR0-DR3 提供少量执行观察点，VEH 在命中后记录现场并轮换观察位置。这种基本块追踪减少了逐指令异常，也让线程状态与间接跳转成为设计重点。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/08-windows-dr-veh-control-flow-tracing/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><script>(function(){const dayStartHour = 6;
 const nightStartHour = 18;
 
     (function ()
@@ -64,7 +64,7 @@ const nightStartHour = 18;
     })();
 })();</script><link rel="stylesheet" href="/blog/astro/_slug_.1l8rUkZ0.css"><style>.frame>.topbar{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.frame>.topbar>.brand{justify-self:start;transition:color .14s ease}.frame>.topbar>.brand:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.frame>.topbar>.brand:hover{color:var(--red)}.frame>.topbar>.center{min-width:0;text-align:center}.frame>.topbar>.to-home{justify-self:end;transition:color .14s ease}.frame>.topbar>.to-home .arrow{display:inline-block;transition:transform .14s ease}.frame>.topbar>.to-home:hover{color:var(--red)}.frame>.topbar>.to-home:hover .arrow{transform:translate(.25em)}.frame>footer{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}.frame>footer .back{transition:color .14s ease}.frame>footer .back .arrow{display:inline-block;transition:transform .14s ease}.frame>footer .back:hover{color:var(--red)}.frame>footer .back:hover .arrow{transform:translate(-.25em)}.frame>footer .colophon{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.frame>.topbar{grid-template-columns:1fr auto}.frame>.topbar>.center{display:none}.frame>footer{grid-template-columns:1fr;gap:.4rem}.frame>footer .colophon{justify-self:start}}@media print{.frame>.topbar>.to-home,.frame>footer{display:none}}:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}
 </style><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"></head> <body> <div class="frame"> <div class="topbar micro"> <a class="brand" href="/blog/minimalist/">Shrei — Technical Index</a> <div class="center"><span class="topbar-category" data-astro-cid-wy3xnbws>Windows 逆向</span></div> <a class="to-home" href="/blog/">
-博客主站 <span class="arrow" aria-hidden="true">&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-ldbnljcb> <p class="category micro" data-astro-cid-ldbnljcb>Windows 逆向</p> <h1 data-astro-cid-ldbnljcb> Windows 控制流追踪：用硬件断点与 VEH 实现基本块级 trace  </h1> <div class="meta micro" data-astro-cid-ldbnljcb> <time datetime="2026-06-07" data-astro-cid-ldbnljcb>2026-06-07</time> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>23 min</span> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>8,477 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span class="tags" data-astro-cid-ldbnljcb>Reverse Engineering / Windows / Debug Register / VEH / Control Flow</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#先把机制讲清" data-astro-cid-wy3xnbws>先把机制讲清</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#1-控制流追踪的最小目标" data-astro-cid-wy3xnbws>1. 控制流追踪的最小目标</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#2-dr-是-cpu-的调试寄存器" data-astro-cid-wy3xnbws>2. DR 是 CPU 的调试寄存器</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#dr-的性能特征" data-astro-cid-wy3xnbws>DR 的性能特征</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#3-veh-是异常分发入口" data-astro-cid-wy3xnbws>3. VEH 是异常分发入口</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#4-dr-可用于控制流追踪的原因" data-astro-cid-wy3xnbws>4. DR 可用于控制流追踪的原因</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#5-基本块级-trace-的断点布置" data-astro-cid-wy3xnbws>5. 基本块级 trace 的断点布置</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#6-dr-编程模型" data-astro-cid-wy3xnbws>6. DR 编程模型</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#7-veh-状态机" data-astro-cid-wy3xnbws>7. VEH 状态机</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#8-tf-备用机制" data-astro-cid-wy3xnbws>8. TF 备用机制</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#9-替代方案的取舍" data-astro-cid-wy3xnbws>9. 替代方案的取舍</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#trap-flag-单步" data-astro-cid-wy3xnbws>Trap Flag 单步</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#软件断点" data-astro-cid-wy3xnbws>软件断点</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#dbi" data-astro-cid-wy3xnbws>DBI</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#intel-pt" data-astro-cid-wy3xnbws>Intel PT</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#10-关键限制" data-astro-cid-wy3xnbws>10. 关键限制</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#11-结论" data-astro-cid-wy3xnbws>11. 结论</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+博客主站 <span class="arrow" aria-hidden="true">&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-ldbnljcb> <p class="category micro" data-astro-cid-ldbnljcb>Windows 逆向</p> <h1 data-astro-cid-ldbnljcb> Windows 控制流追踪：用硬件断点与 VEH 实现基本块级 trace  </h1> <div class="meta micro" data-astro-cid-ldbnljcb> <time datetime="2026-06-07" data-astro-cid-ldbnljcb>2026-06-07</time> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>24 min</span> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>8,676 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span class="tags" data-astro-cid-ldbnljcb>Reverse Engineering / Windows / Debug Register / VEH / Control Flow</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#先把机制讲清" data-astro-cid-wy3xnbws>先把机制讲清</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#1-控制流追踪的最小目标" data-astro-cid-wy3xnbws>1. 控制流追踪的最小目标</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#2-dr-是-cpu-的调试寄存器" data-astro-cid-wy3xnbws>2. DR 是 CPU 的调试寄存器</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#dr-的性能特征" data-astro-cid-wy3xnbws>DR 的性能特征</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#3-veh-是异常分发入口" data-astro-cid-wy3xnbws>3. VEH 是异常分发入口</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#4-dr-可用于控制流追踪的原因" data-astro-cid-wy3xnbws>4. DR 可用于控制流追踪的原因</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#5-基本块级-trace-的断点布置" data-astro-cid-wy3xnbws>5. 基本块级 trace 的断点布置</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#6-dr-编程模型" data-astro-cid-wy3xnbws>6. DR 编程模型</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#7-veh-状态机" data-astro-cid-wy3xnbws>7. VEH 状态机</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#8-tf-备用机制" data-astro-cid-wy3xnbws>8. TF 备用机制</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#9-替代方案的取舍" data-astro-cid-wy3xnbws>9. 替代方案的取舍</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#trap-flag-单步" data-astro-cid-wy3xnbws>Trap Flag 单步</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#软件断点" data-astro-cid-wy3xnbws>软件断点</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#dbi" data-astro-cid-wy3xnbws>DBI</a> </li><li class="lv3" data-astro-cid-wy3xnbws> <a href="#intel-pt" data-astro-cid-wy3xnbws>Intel PT</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#10-线程与异常会改变观察路径" data-astro-cid-wy3xnbws>10. 线程与异常会改变观察路径</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#11-结论" data-astro-cid-wy3xnbws>11. 结论</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
 </a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <blockquote><p>DR+VEH 控制流追踪的关键，不是把每条指令都停下来观察，而是让 CPU 在控制流边界主动报告执行位置。本文按机制、循环和限制三层拆开这套方案。</p></blockquote>
 <hr>
 <h2 id="先把机制讲清">先把机制讲清<a class="anchor" href="#先把机制讲清"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
@@ -147,7 +147,7 @@ const nightStartHour = 18;
 
 
 
-<table><thead><tr><th>特征</th><th>硬件断点 (DR)</th><th>软件断点 (0xCC)</th></tr></thead><tbody><tr><td>代码页修改</td><td>无需修改</td><td>需要写入 <code>0xCC</code></td></tr><tr><td>命中判断</td><td>CPU 取指阶段完成</td><td>需要译码异常指令</td></tr><tr><td>恢复成本</td><td>只需更新 DR</td><td>恢复原字节 + 单步 + 重写断点</td></tr><tr><td>多核一致性</td><td>无缓存失效问题</td><td>存在代码缓存失效</td></tr><tr><td>基本块内开销</td><td>零开销</td><td>零开销</td></tr></tbody></table>
+<table><thead><tr><th>特征</th><th>硬件断点 (DR)</th><th>软件断点 (0xCC)</th></tr></thead><tbody><tr><td>代码页修改</td><td>无需修改</td><td>需要写入 <code>0xCC</code></td></tr><tr><td>命中判断</td><td>CPU 取指阶段完成</td><td>需要译码异常指令</td></tr><tr><td>恢复动作</td><td>调整断点槽与恢复上下文</td><td>通常恢复原字节、安排原指令执行，再重设断点</td></tr><tr><td>代码一致性</td><td>不改代码页，仍需管理线程调试状态</td><td>修改代码页时需处理指令缓存与其他线程访问</td></tr><tr><td>未命中路径</td><td>无逐指令异常；整体成本取决于命中频率</td><td>无逐指令异常；整体成本还受补丁管理影响</td></tr></tbody></table>
 <p>软件断点每次命中要：写入断点 → 触发异常 → 恢复原指令 → 单步执行 → 再写回断点。DR 省掉了所有代码页操作，只在命中时进入异常。</p>
 <p>硬件断点和软件断点的核心差异：软件断点通过代码改写触发异常；DR 让 CPU 在执行到指定地址时主动报告异常。</p>
 <hr>
@@ -327,7 +327,7 @@ const nightStartHour = 18;
 <path d="M340 106 C340 130, 360 142, 420 156" stroke="currentColor" stroke-width="1.5" fill="none" marker-end="url(#trace-window-arrow)"></path>
 <path d="M792 106 C792 138, 715 155, 738 172" stroke="currentColor" stroke-width="1.5" fill="none" marker-end="url(#trace-window-arrow)"></path>
 </svg>
-<p>效果是：基本块内部由 CPU 正常执行，只有基本块边界触发异常。相比全程 TF 单步，异常频率从”每条指令一次”变成”每个基本块一次”。</p>
+<p>在后继可预测的普通路径上，基本块内部正常执行，观察点集中在入口或尾部。相较全程 TF 单步，异常次数可以显著减少；间接跳转与其他异常转移仍会改变这一节奏。</p>
 <hr>
 <h2 id="6-dr-编程模型">6. DR 编程模型<a class="anchor" href="#6-dr-编程模型"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
 <p>实际写 DR 时，主要关注 <code>DR0-DR3</code> 和 <code>DR7</code>。</p>
@@ -355,10 +355,11 @@ const nightStartHour = 18;
 <table><thead><tr><th>DR7 位域</th><th>含义</th></tr></thead><tbody><tr><td><code>L0-L3</code></td><td>启用当前线程的本地断点</td></tr><tr><td><code>R/W0-R/W3</code></td><td>设置观察类型，执行断点使用 <code>00</code></td></tr><tr><td><code>LEN0-LEN3</code></td><td>设置观察长度，执行断点使用 1 字节</td></tr></tbody></table>
 <p>本文场景只需要执行断点：</p>
 <div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">DR0-DR3 = 下一轮观察地址</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">DR7     = 启用对应槽位，类型为执行断点</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="DR0-DR3 = 下一轮观察地址DR7     = 启用对应槽位，类型为执行断点"><div></div></button></div></figure></div>
-<p>写入方式是更新目标线程的 <code>CONTEXT</code>，再通过 <code>SetThreadContext</code> 写回。由于 DR 是线程上下文的一部分，追踪多线程程序时必须明确当前追踪的是哪个线程。</p>
+<p>从外部设置时，通常先让目标线程暂停，再按相应的上下文标志读取与更新调试寄存器；对运行中的线程直接调用 <code>SetThreadContext</code> 不能提供稳定结果。在 VEH 中，则修改系统交给 handler 的 <code>CONTEXT</code>，由异常恢复采用该现场。</p>
+<p>执行断点在目标指令执行前命中。恢复时若仍启用同一断点，需要结合 RF 等架构语义避免立即重触发，或先调整观察槽。DR6 的命中状态、DR7 的启用状态与当前追踪状态共同决定此次异常是否属于追踪器。</p>
 <hr>
 <h2 id="7-veh-状态机">7. VEH 状态机<a class="anchor" href="#7-veh-状态机"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>VEH handler 收到 <code>EXCEPTION_SINGLE_STEP</code> 后，需要先区分 trace 事件和其他调试异常。它会确认异常是否来自当前布置的 DR，并根据当前状态决定下一步。</p>
+<p><code>EXCEPTION_SINGLE_STEP</code> 既可能来自本轮 DR，也可能来自 TF 或其他调试机制。handler 将 DR6、命中地址和当前等待状态对起来后，才能把事件记入这次 trace；无关事件继续交给后续处理器。</p>
 <p>状态可以简化为：</p>
 
 
@@ -523,13 +524,13 @@ const nightStartHour = 18;
 <p>所以 TF 的定位很清楚：它不是和 DR 并列的主追踪方式，而是 DR 窗口覆盖不到下一跳时的短暂过渡态。</p>
 <hr>
 <h2 id="9-替代方案的取舍">9. 替代方案的取舍<a class="anchor" href="#9-替代方案的取舍"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>替代方案放在这里，用来解释 DR+VEH 的选型边界。</p>
+<p>不同追踪方式把运行时成本放在了不同位置。</p>
 <h3 id="trap-flag-单步">Trap Flag 单步<a class="anchor" href="#trap-flag-单步"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
-<p>TF 单步最直接。每执行一条指令，CPU 都触发一次调试异常，handler 可以完整记录每一步 RIP。</p>
+<p>TF 单步在常见用户态指令路径上提供逐指令的调试事件。异常转移及少数具有特殊调试语义的指令，会让实际记录比简单的逐条序列更复杂。</p>
 <p>问题也很直接：异常频率过高。控制流追踪通常只需要基本块边界，基本块内部的线性指令可以让 CPU 自己执行完。</p>
 <h3 id="软件断点">软件断点<a class="anchor" href="#软件断点"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
 <p>软件断点通过写入 <code>0xCC</code> 触发 <code>EXCEPTION_BREAKPOINT</code>。它适合普通调试；在低侵入控制流追踪场景里，代码页改写会带来额外成本（详见 2.1 性能对比）。</p>
-<p>DR 不修改代码页，避开了改写、恢复、竞态和校验检测等问题。</p>
+<p>DR 避开了代码字节的改写与恢复，但调试寄存器、VEH 注册和运行时序仍然可以被观察到，线程状态也仍需协调。</p>
 <h3 id="dbi">DBI<a class="anchor" href="#dbi"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h3>
 <p>DBI 通过运行时翻译和插桩代码获得更强分析能力。它适合复杂行为分析，但对目标进程的接管程度更高。</p>
 <p>在控制流追踪目标下，DBI 的代价主要来自：</p>
@@ -544,45 +545,10 @@ const nightStartHour = 18;
 <p>Intel PT 是更底层的硬件追踪能力，理论上很适合记录分支路径。问题不在硬件能力，而在工程入口和解码链路。</p>
 <p>Windows 下启用、采集、解码、关联模块和符号都需要额外工具链。对一次轻量的用户态 trace 工具来说，工程门槛通常高于 DR+VEH。</p>
 <hr>
-<h2 id="10-关键限制">10. 关键限制<a class="anchor" href="#10-关键限制"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>DR+VEH 不是完整进程级 trace 的通用答案，它有明确边界。</p>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<table><thead><tr><th>限制</th><th>来源</th><th>影响</th></tr></thead><tbody><tr><td>DR 只有 4 个地址槽</td><td>x86-64 架构</td><td>条件跳转占 2 个，复杂场景需要 TF 辅助</td></tr><tr><td>DR 是线程上下文</td><td>Windows 线程模型</td><td>需要明确追踪线程，多线程覆盖不完整</td></tr><tr><td>VEH 走异常路径</td><td>Windows 异常分发</td><td>handler 必须保持轻量</td></tr><tr><td>间接控制流难静态预测</td><td>目标来自寄存器或内存</td><td>需要尾部断点或 TF 解析</td></tr><tr><td>可被强对抗感知</td><td>上下文写入、VEH 注册和时序变化</td><td>隐蔽性只相对软件断点更好</td></tr></tbody></table>
-<p>最硬的限制是线程范围。当前设计更适合作为特定线程的定点分析工具，完整进程级执行记录需要额外的线程枚举、上下文维护和同步策略。</p>
+<h2 id="10-线程与异常会改变观察路径">10. 线程与异常会改变观察路径<a class="anchor" href="#10-线程与异常会改变观察路径"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>调试寄存器随线程上下文保存。一个线程命中了目标地址，不代表其他线程经过同一地址时也会被观察；新的线程加入后，也有自己的一组追踪状态。</p>
+<p>异常转移则可能绕开原先布置的后继入口。只在预计入口放断点，无法自动记录中间所有异常处理路径。记录里保留线程身份、异常事件和追踪状态，才有机会解释这种跳出与重新进入。</p>
+<p>四个地址槽很适合围绕当前执行位置轮换，覆盖更广的进程行为则会增加上下文维护工作。这是从定点观察扩展到全进程记录时，复杂度最明显的变化。</p>
 <hr>
 <h2 id="11-结论">11. 结论<a class="anchor" href="#11-结论"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
 <p>DR+VEH 控制流追踪可以概括为一套基本块级跳步机制：</p>
@@ -595,5 +561,5 @@ const nightStartHour = 18;
 <li>VEH 记录实际路径并布置下一轮观察点。</li>
 </ol>
 <p>方案成立的关键，是 DR 提供了”不修改代码页的执行地址观察能力”，VEH 提供了”异常命中后的用户态分发入口”。软断、DBI、Intel PT 都能做控制流追踪，但它们解决问题的方式不同；在低侵入、基本块级、可即时附加这个目标下，DR+VEH 是更直接的路线。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-u3wiumwa> <div class="nav-cell" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/13-local-bridge-named-pipe-routing/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa> <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8592;</span> 上一篇
-</span> <span class="nav-title" data-astro-cid-u3wiumwa>本地桥接的传输选型：Server-First 与按进程命名的管道路由</span> </a> </div> <div class="nav-cell next" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/02-il2cpp-registration-counts/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa>
-下一篇 <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8594;</span> </span> <span class="nav-title" data-astro-cid-u3wiumwa>IL2CPP 元数据表：从一张表还原 Unity 项目全貌</span> </a> </div> </nav> </div> </div>   <footer class="micro"> <a class="back" href="/blog/minimalist/"> <span class="arrow" aria-hidden="true">&#8592;</span> 返回技术索引 </a> <span class="copy">&copy; 2026 Shrei</span> <span class="colophon">Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div>  </body></html>
+</span> <span class="nav-title" data-astro-cid-u3wiumwa>MCP 与长期工作：会话结束，内容仍然留下</span> </a> </div> <div class="nav-cell next" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/02-il2cpp-registration-counts/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa>
+下一篇 <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8594;</span> </span> <span class="nav-title" data-astro-cid-u3wiumwa>IL2CPP 注册表中的泛型、类型与代码计数</span> </a> </div> </nav> </div> </div>   <footer class="micro"> <a class="back" href="/blog/minimalist/"> <span class="arrow" aria-hidden="true">&#8592;</span> 返回技术索引 </a> <span class="copy">&copy; 2026 Shrei</span> <span class="colophon">Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div>  </body></html>

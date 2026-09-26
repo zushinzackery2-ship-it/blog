@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>运行态角色贴图的外部提取：draw 抓取、格式解码与外观复现 · Shrei</title><meta name="description" content="从已知的 Unity GameObject 沿 Renderer、Material 与 Texture2D 提取运行态角色贴图；CPU 侧拿不到的像素再抓某趟 draw 从显存读回。记录实际字段偏移、抓取时序、格式解码、行序归一化与着色器染色复现。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/24-runtime-texture-extraction/"><meta property="og:title" content="运行态角色贴图的外部提取：draw 抓取、格式解码与外观复现 · Shrei"><meta property="og:description" content="从已知的 Unity GameObject 沿 Renderer、Material 与 Texture2D 提取运行态角色贴图；CPU 侧拿不到的像素再抓某趟 draw 从显存读回。记录实际字段偏移、抓取时序、格式解码、行序归一化与着色器染色复现。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/24-runtime-texture-extraction/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><script>(function(){const dayStartHour = 6;
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>运行态贴图提取：采样状态与角色外观 · Shrei</title><meta name="description" content="贴图已经导出，角色仍可能上下颠倒、颜色错误，甚至混入另一趟 draw 的资源。从一次运行态提取中的问题出发，区分快照一致性、格式解释、坐标约定与着色器合成各自负责的内容。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/24-runtime-texture-extraction/"><meta property="og:title" content="运行态贴图提取：采样状态与角色外观 · Shrei"><meta property="og:description" content="贴图已经导出，角色仍可能上下颠倒、颜色错误，甚至混入另一趟 draw 的资源。从一次运行态提取中的问题出发，区分快照一致性、格式解释、坐标约定与着色器合成各自负责的内容。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/24-runtime-texture-extraction/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><script>(function(){const dayStartHour = 6;
 const nightStartHour = 18;
 
     (function ()
@@ -64,394 +64,47 @@ const nightStartHour = 18;
     })();
 })();</script><link rel="stylesheet" href="/blog/astro/_slug_.1l8rUkZ0.css"><style>.frame>.topbar{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.frame>.topbar>.brand{justify-self:start;transition:color .14s ease}.frame>.topbar>.brand:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.frame>.topbar>.brand:hover{color:var(--red)}.frame>.topbar>.center{min-width:0;text-align:center}.frame>.topbar>.to-home{justify-self:end;transition:color .14s ease}.frame>.topbar>.to-home .arrow{display:inline-block;transition:transform .14s ease}.frame>.topbar>.to-home:hover{color:var(--red)}.frame>.topbar>.to-home:hover .arrow{transform:translate(.25em)}.frame>footer{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}.frame>footer .back{transition:color .14s ease}.frame>footer .back .arrow{display:inline-block;transition:transform .14s ease}.frame>footer .back:hover{color:var(--red)}.frame>footer .back:hover .arrow{transform:translate(-.25em)}.frame>footer .colophon{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.frame>.topbar{grid-template-columns:1fr auto}.frame>.topbar>.center{display:none}.frame>footer{grid-template-columns:1fr;gap:.4rem}.frame>footer .colophon{justify-self:start}}@media print{.frame>.topbar>.to-home,.frame>footer{display:none}}:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}
 </style><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"></head> <body> <div class="frame"> <div class="topbar micro"> <a class="brand" href="/blog/minimalist/">Shrei — Technical Index</a> <div class="center"><span class="topbar-category" data-astro-cid-wy3xnbws>Unity 逆向</span></div> <a class="to-home" href="/blog/">
-博客主站 <span class="arrow" aria-hidden="true">&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-ldbnljcb> <p class="category micro" data-astro-cid-ldbnljcb>Unity 逆向</p> <h1 data-astro-cid-ldbnljcb> 运行态角色贴图的外部提取：draw 抓取、格式解码与外观复现  </h1> <div class="meta micro" data-astro-cid-ldbnljcb> <time datetime="2026-08-12" data-astro-cid-ldbnljcb>2026-08-12</time> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>26 min</span> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>11,164 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span class="tags" data-astro-cid-ldbnljcb>Reverse Engineering / Unity / Graphics / D3D11 / Texture / Shader</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#贴图来源与-gpu-readback" data-astro-cid-wy3xnbws>贴图来源与 GPU readback</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#本次目标构建的实际资源链" data-astro-cid-wy3xnbws>本次目标构建的实际资源链</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#锁停在-api-边界会命中状态切换的中途" data-astro-cid-wy3xnbws>锁停在 API 边界，会命中状态切换的中途</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#用输入资源身份做二次筛选" data-astro-cid-wy3xnbws>用输入资源身份做二次筛选</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#常量和贴图必须来自同一快照" data-astro-cid-wy3xnbws>常量和贴图必须来自同一快照</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#变换资源先做输入域验证" data-astro-cid-wy3xnbws>变换资源先做输入域验证</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#解码要分清资源格式视图格式与打包布局" data-astro-cid-wy3xnbws>解码要分清资源格式、视图格式与打包布局</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#3d-纹理有两个会静默出错的坐标约定" data-astro-cid-wy3xnbws>3D 纹理有两个会静默出错的坐标约定</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#行序在-gpu图像与引擎之间的对齐" data-astro-cid-wy3xnbws>行序在 GPU、图像与引擎之间的对齐</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#方向要用可判定的审计验收" data-astro-cid-wy3xnbws>方向要用可判定的审计验收</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#颜色常常不在贴图里" data-astro-cid-wy3xnbws>颜色常常不在贴图里</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#染色复刻里必须精确复刻的三点" data-astro-cid-wy3xnbws>染色复刻里必须精确复刻的三点</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#组数区域级联与通道冲突" data-astro-cid-wy3xnbws>组数、区域级联与通道冲突</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#线性运行态颜色被声明成-color-会二次转换" data-astro-cid-wy3xnbws>线性运行态颜色被声明成 Color 会二次转换</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#边界与迁移" data-astro-cid-wy3xnbws>边界与迁移</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
-</a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <p>输入是一个已知的 Unity <code>GameObject</code>。提取链从组件槽取得 <code>Renderer</code>，由 <code>Renderer +0x148/+0x158</code> 读取材质 InstanceID 数组，再进入 <code>Material</code> 属性表取得 <code>Texture2D</code> 引用。CPU provider 有效时走外部只读路径；provider 为空时，在目标 draw 边界从 GPU 读回。抓取时序、格式解码、行序方向和运行态染色分别设置验收条件。</p>
-<p>本文给出本次目标构建实际使用的资源链偏移和着色器寄存器映射。它们与模型篇使用同一份二进制 profile，只对该指纹成立；换版本需要重新从符号、反汇编和运行态探针闭合。</p>
-<p>处理这类提取，有几条纪律反复被验证：</p>
-<ul>
-<li>抓取要在同一快照里原子完成，并按输入资源身份筛掉状态切换的过渡窗口；</li>
-<li>解码记录资源格式和视图格式，打包格式按真实位布局解，单通道按硬件采样语义展开；</li>
-<li>行序在一个编码边界完成归一化，UV 保持原始值，方向由审计结果验收；</li>
-<li>角色材质的最终颜色由贴图、材质常量和像素着色器共同决定；染色逻辑通过反汇编与运行态材质值复现。</li>
-</ul>
-<p>下面按抓取、解码、方向、颜色四段展开。</p>
-<h2 id="贴图来源与-gpu-readback">贴图来源与 GPU readback<a class="anchor" href="#贴图来源与-gpu-readback"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>CPU 侧 provider 有效时，跨进程读取直接取得像素。provider 已释放时，纹理像素仅存在于显存，由最小注入模块读回目标 draw 绑定的资源。GPU 路径的核心要求是在 API 调用边界取得一份属于同一趟 draw 的自洽资源集合。</p>
-<h2 id="本次目标构建的实际资源链">本次目标构建的实际资源链<a class="anchor" href="#本次目标构建的实际资源链"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>本节数值绑定 <code>star-unityplayer-2025-02-19-pdb-0b158128</code>：<code>UnityPlayer.dll</code> 映像大小 <code>0x1E64000</code>，PE 时间戳 <code>0x67B55906</code>，代码段 MD5 <code>C9D7511A4455BC31FF770E3852A07FED</code>，PDB GUID <code>0B158128-4A3B-4E9B-95CE-840CC514FDAD</code>。从已知 <code>GameObject</code> 到贴图的实际入口是：组件槽中的 <code>Renderer</code> → <code>Renderer +0x148/+0x158</code> 的材质 InstanceID 数组 → <code>Material +0xE0</code> 的共享属性数据 → texture 类型属性中的 <code>Texture2D</code>。取得 <code>Texture2D</code> 后，再按下表选择 CPU provider 或 GPU 资源路径：</p>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<table><thead><tr><th>结构</th><th>字段</th><th align="right">偏移/公式</th></tr></thead><tbody><tr><td><code>Texture2D</code></td><td>textureID</td><td align="right"><code>+0x50</code></td></tr><tr><td><code>Texture2D</code></td><td>ImageDataProvider</td><td align="right"><code>+0x58</code></td></tr><tr><td><code>Texture2D</code></td><td>StreamingInfo</td><td align="right"><code>+0x80</code></td></tr><tr><td><code>Texture2D</code></td><td>width / height / format</td><td align="right"><code>+0x11C / +0x120 / +0x124</code></td></tr><tr><td>ImageDataProvider</td><td>raw base</td><td align="right"><code>+0x10</code></td></tr><tr><td><code>UnityPlayer</code></td><td>TextureIdMap</td><td align="right"><code>+0x1C2DC00</code></td></tr><tr><td>TextureIdMap</td><td>page / slot</td><td align="right"><code>page = id >> 10</code>，<code>slot = id &#x26; 0x3FF</code></td></tr><tr><td>TextureIdMap</td><td>table / slot stride</td><td align="right"><code>0x08 / 0x08</code></td></tr></tbody></table>
-<p>provider 非空时，从 <code>ImageDataProvider +0x10</code> 读取 CPU 像素；provider 为空时，以 <code>textureID</code> 查 <code>TextureIdMap</code> 取得 <code>GfxTexture</code>。正式 reader 会在该对象附近的候选指针中检查 COM vtable、<code>ID3D11Resource::GetType</code> 与 texture desc，再接受 D3D 资源。这里故意不把搜索窗口伪装成固定字段偏移：<code>GfxTexture -> ID3D11Texture2D</code> 的最终成员位置尚未由反汇编钉死，扫描加接口验证只是当前定位策略。</p>
-<p>材质属性名使用 <code>FastPropertyName</code>。低 30 位是索引，高 2 位选择动态表或三张静态表：</p>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<table><thead><tr><th>表</th><th>RVA / 布局</th></tr></thead><tbody><tr><td>dynamic vector</td><td><code>UnityPlayer +0x1D181C8</code>；data <code>+0x00</code>，count <code>+0x10</code></td></tr><tr><td>static tag <code>0x40000000</code></td><td><code>UnityPlayer +0x1C15F50</code>，123 项</td></tr><tr><td>static tag <code>0x80000000</code></td><td><code>UnityPlayer +0x1C15E00</code>，21 项</td></tr><tr><td>static tag <code>0xC0000000</code></td><td><code>UnityPlayer +0x1C15C30</code>，26 项</td></tr></tbody></table>
-<p>索引掩码为 <code>0x3FFFFFFF</code>，tag 掩码为 <code>0xC0000000</code>。解析出属性名后，再从 Material Property Sheet 取值：<code>Material +0xE0</code> 指向 shared data，<code>shared +0x60</code> 是 PropertyContainer，<code>+0x10</code> 是 built pointer，<code>+0x178</code> 的 bit 0 表示已构建。</p>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<table><thead><tr><th>PropertyContainer 字段</th><th align="right">偏移</th></tr></thead><tbody><tr><td>nameIds / propertyCount</td><td align="right"><code>+0x10 / +0x20</code></td></tr><tr><td>descriptors / descriptorCount</td><td align="right"><code>+0x30 / +0x40</code></td></tr><tr><td>values / valueSize</td><td align="right"><code>+0x50 / +0x60</code></td></tr><tr><td>typeRangeStarts</td><td align="right"><code>+0x70</code></td></tr><tr><td>per-type data base offsets</td><td align="right"><code>+0xB0</code></td></tr><tr><td>data base offset / type count</td><td align="right"><code>0xC0 / 7</code></td></tr></tbody></table>
-<p>每个 descriptor 的寻址必须照抄：<code>start = u32(container+0x70+type*8)</code>，<code>end = u32(container+0x78+type*8)</code>，<code>packed = u64(descriptors[index])</code>，<code>offset = packed &#x26; 0xFFFFF</code>，<code>count = (packed >> 20) &#x26; 0xFFFFF</code>，最终 <code>value = values + typeBase + offset</code>。当前链已使用 <code>type 0</code> 读取 float、<code>type 2</code> 读取 vector/color、<code>type 4</code> 读取 texture。Renderer 的材质 InstanceID 数组仍在 <code>+0x148/+0x158</code>，Material 的 shader InstanceID 在 <code>+0x38</code>，Renderer MPB 在 <code>+0x170/+0x180</code>；这些实例覆盖必须和共享材质值合并后再解释外观。</p>
-<h2 id="锁停在-api-边界会命中状态切换的中途">锁停在 API 边界，会命中状态切换的中途<a class="anchor" href="#锁停在-api-边界会命中状态切换的中途"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>一趟 draw 的绑定由多次 API 调用累积设置：着色器、输入资源、渲染目标、常量依次更新，最后发起 draw。在 API 调用边界取得的锁可能落在过渡窗口，此时着色器和渲染目标已经切换，输入资源仍保留上一趟 draw 的绑定。</p>
-<svg id="svg-texture-transition-window" viewBox="0 0 720 170" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto" role="img" aria-label="锁命中状态切换的过渡窗口">
-  <style>
-    #svg-texture-transition-window .t{fill:currentColor;font-family:sans-serif;font-size:11px}
-    #svg-texture-transition-window .s{fill:currentColor;font-family:sans-serif;font-size:10px;opacity:0.82}
-    #svg-texture-transition-window .line{stroke:currentColor;stroke-width:1.5}
-    #svg-texture-transition-window .win{fill:currentColor;opacity:0.12}
-  </style>
-  <line class="line" x1="20" y1="60" x2="700" y2="60"></line>
-  <g>
-    <line class="line" x1="90" y1="52" x2="90" y2="68"></line><text class="s" x="60" y="44">设着色器</text>
-    <line class="line" x1="210" y1="52" x2="210" y2="68"></line><text class="s" x="182" y="44">设渲染目标</text>
-    <line class="line" x1="330" y1="52" x2="330" y2="68"></line><text class="s" x="300" y="86">设输入资源(旧→新)</text>
-    <line class="line" x1="490" y1="52" x2="490" y2="68"></line><text class="s" x="466" y="44">设常量</text>
-    <line class="line" x1="630" y1="52" x2="630" y2="68"></line><text class="s" x="612" y="44">draw</text>
-  </g>
-  <rect class="win" x="210" y="30" width="120" height="60"></rect>
-  <text class="s" x="216" y="112">过渡窗口：着色器/目标已新，输入资源仍旧</text>
-  <text class="t" x="216" y="132">此处拿锁 → 快照字段来自不同 draw</text>
-</svg>
-<p>着色器和渲染目标属于粗粒度特征，过渡窗口同样满足。大量抽样通常形成资源身份主簇与过渡簇：两者共享着色器和渲染目标，输入槽的资源身份（格式、指针）不同。门控因此加入输入资源身份，过渡簇数据进入拒绝计数。</p>
-<h2 id="用输入资源身份做二次筛选">用输入资源身份做二次筛选<a class="anchor" href="#用输入资源身份做二次筛选"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>候选报告层按输入槽资源身份筛选：资源身份匹配主簇时落盘，过渡簇计入拒绝计数。筛选只决定候选是否进入结果集，抓取过程保持原样。</p>
-<svg id="svg-texture-resource-filter" viewBox="0 0 720 160" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto" role="img" aria-label="输入资源身份二次筛选">
-  <style>
-    #svg-texture-resource-filter .b{fill:none;stroke:currentColor;stroke-width:1.5}
-    #svg-texture-resource-filter .t{fill:currentColor;font-family:sans-serif;font-size:11px;text-anchor:middle}
-    #svg-texture-resource-filter .s{fill:currentColor;font-family:sans-serif;font-size:10px;opacity:0.82;text-anchor:middle}
-    #svg-texture-resource-filter .arw{stroke:currentColor;stroke-width:1.4;fill:none;marker-end:url(#a6h)}
-    #svg-texture-resource-filter .bad{stroke-dasharray:4 3;opacity:0.6}
-  </style>
-  <defs>
-    <marker id="a6h" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
-      <path d="M0,0 L7,3 L0,6 Z" fill="currentColor"></path>
-    </marker>
-  </defs>
-  <rect class="b" x="20" y="60" width="160" height="40"></rect><text class="t" x="100" y="78">粗粒度门控</text><text class="s" x="100" y="93">着色器 + 渲染目标</text>
-  <rect class="b" x="300" y="60" width="180" height="40"></rect><text class="t" x="390" y="78">按输入资源身份筛</text><text class="s" x="390" y="93">某槽 = 主簇身份</text>
-  <rect class="b" x="560" y="20" width="140" height="36"></rect><text class="t" x="630" y="42">主簇 → 落盘</text>
-  <rect class="b bad" x="560" y="104" width="140" height="36"></rect><text class="t" x="630" y="126">过渡簇 → 拒绝</text>
-  <path class="arw" d="M180 80 L296 80"></path>
-  <path class="arw" d="M480 72 L556 44"></path>
-  <path class="arw" d="M480 88 L556 116"></path>
-</svg>
-<p>渲染目标拷贝发生在 draw 之前，因此快照保存的是当时已有内容。回放输入采用同一把锁内取得、并通过身份筛选的输入资源、采样器和常量。命中条件选择能够唯一区分目标 draw 的资源身份。</p>
-<h2 id="常量和贴图必须来自同一快照">常量和贴图必须来自同一快照<a class="anchor" href="#常量和贴图必须来自同一快照"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>资源集合还需要满足时刻一致性。逐槽请求会让每个槽来自独立快照，槽与槽之间可能跨过多次 draw。一次窗口请求应在同一把锁内取得全部目标槽、采样器和常量。</p>
-<svg id="svg-texture-atomic-snapshot" viewBox="0 0 720 210" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto" role="img" aria-label="逐槽拼接与原子窗口对照">
-  <style>
-    #svg-texture-atomic-snapshot .b{fill:none;stroke:currentColor;stroke-width:1.5}
-    #svg-texture-atomic-snapshot .fill{fill:currentColor;opacity:0.08}
-    #svg-texture-atomic-snapshot .t{fill:currentColor;font-family:sans-serif;font-size:11.5px}
-    #svg-texture-atomic-snapshot .s{fill:currentColor;font-family:sans-serif;font-size:10px;opacity:0.8}
-  </style>
-  <text class="t" x="14" y="20">逐槽：多次快照拼一组（时刻不一致）</text>
-  <g>
-    <rect class="b" x="14" y="30" width="70" height="30"></rect><text class="s" x="24" y="49">槽A @T1</text>
-    <rect class="b" x="98" y="30" width="70" height="30"></rect><text class="s" x="108" y="49">槽B @T2</text>
-    <rect class="b" x="182" y="30" width="70" height="30"></rect><text class="s" x="192" y="49">槽C @T3</text>
-    <rect class="b" x="266" y="30" width="70" height="30"></rect><text class="s" x="276" y="49">槽D @T4</text>
-  </g>
-  <text class="s" x="356" y="49">← 槽来自不同快照，组合跨越多趟 draw</text>
-  <text class="t" x="14" y="110">原子窗口：一次调用取满整组</text>
-  <rect class="b" x="14" y="120" width="322" height="40"></rect>
-  <rect class="fill" x="15" y="121" width="320" height="38"></rect>
-  <text class="s" x="30" y="144">同一快照、同一把锁取全部槽</text>
-  <rect class="b" x="360" y="120" width="220" height="40"></rect>
-  <text class="s" x="374" y="138">门控在锁内、拷贝前判定</text>
-  <text class="s" x="374" y="154">门控失败 → 零拷贝返回</text>
-  <text class="s" x="14" y="188">门控条件使用已知身份，发现性特征留给分析阶段</text>
-</svg>
-<p>窗口请求在同一把锁内、拷贝前完成门控，并一次取得目标范围内的全部槽和常量；门控失败时返回零拷贝结果。常量与参与运算的贴图来自同一快照，使反解代数对应同一趟 pass。门控使用已知资源身份；边长、格式分布等发现性特征留在候选分析阶段。</p>
-<h2 id="变换资源先做输入域验证">变换资源先做输入域验证<a class="anchor" href="#变换资源先做输入域验证"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>输出级变换具有明确的输入域和作用方向。例如某张颜色分级 LUT 实测为压暗曲线，直接应用到离线结果会把画面推向近黑。资源归属确认后，还要继续验证它在渲染链中的数学作用。</p>
-<p>验证可使用颜色立方体八个角等已知输入，并通过可解析反解检查残差。压暗曲线的确认会把亮度缺口定位到该变换上游。非线性变换按“逐样本反解，再统计均值”的顺序处理，因为 <code>inverse(mean) != mean(inverse)</code>。8 位显示值同时报告 <code>±0.5/255</code> 对应的输入区间；误差带覆盖目标比值时，该样本不参与倍率判断。零值与曲线肩部饱和样本也从倍率样本集中排除。</p>
-<h2 id="解码要分清资源格式视图格式与打包布局">解码要分清资源格式、视图格式与打包布局<a class="anchor" href="#解码要分清资源格式视图格式与打包布局"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>抓回来的字节要解码成像素，这里有三件容易混的事。</p>
-<ul>
-<li>资源格式描述底层存储，视图格式决定采样解码。TYPELESS 资源配合 sRGB 视图时，硬件按视图规则执行线性化。抓取结果同时保存两种格式。</li>
-<li>R11G11B10、R10G10B10A2 等打包格式按真实位布局解码。整型视图直接对应完整像素字，解码后再拆分各分量。</li>
-<li>A8 等单通道格式按硬件采样语义展开为 <code>(0,0,0,a)</code>，alpha 保留原始数值，RGB 置零。</li>
-</ul>
-<h2 id="3d-纹理有两个会静默出错的坐标约定">3D 纹理有两个会静默出错的坐标约定<a class="anchor" href="#3d-纹理有两个会静默出错的坐标约定"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>以 3D LUT 这类体数据为例，轴序与格号映射需要用偏色样本验收。中性数据满足 <code>r=g=b</code>，无法区分轴排列。</p>
-<p>第一是轴序。红/绿/蓝分量分别索引纹理的宽/高/深，而解码后数组的轴顺序往往是（深, 高, 宽, 通道）。因此颜色 <code>(r, g, b)</code> 按 <code>volume[b, g, r]</code> 取值。中性对角线满足 <code>r=g=b</code>，无法区分轴排列；偏色样本负责轴序验收。</p>
-<p>第二是格子轴的映射。着色器把编码值夹到 <code>[0,1]</code> 后，通常再映射到纹理坐标区间（如 <code>[0.5/N, 1-0.5/N]</code>），落在首末格的中心。这时“输入值 → 格号”的换算是 <code>cell = coord*N - 0.5</code>。若直接用 <code>(i+0.5)/N</code> 当着色器输入，等于把纹理坐标当成了输入值，每个值偏半格。这类半格误差要靠“编码值 → 格”的正确换算消除，并写进测试，用远小于半格的阈值把反汇编字面量的舍入残差和真正的半格错误区分开。</p>
-<h2 id="行序在-gpu图像与引擎之间的对齐">行序在 GPU、图像与引擎之间的对齐<a class="anchor" href="#行序在-gpu图像与引擎之间的对齐"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>纹理从 GPU 显存搬到离线文件、再导入引擎显示，会依次经过几套对“第 0 行在哪、v=0 采样哪一行”约定不同的系统。只要这些约定之间的隐式翻转次数是奇数，画面就整体上下颠倒。</p>
-<svg id="svg-texture-row-conventions" viewBox="0 0 720 250" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto" role="img" aria-label="三套行序约定对照">
-  <style>
-    #svg-texture-row-conventions .box{fill:none;stroke:currentColor;stroke-width:1.5}
-    #svg-texture-row-conventions .row0{fill:currentColor;opacity:0.14}
-    #svg-texture-row-conventions .t{fill:currentColor;font-family:sans-serif;font-size:13px}
-    #svg-texture-row-conventions .s{fill:currentColor;font-family:sans-serif;font-size:11px;opacity:0.8}
-    #svg-texture-row-conventions .arw{stroke:currentColor;stroke-width:1.5;fill:none;marker-end:url(#sh)}
-  </style>
-  <defs>
-    <marker id="sh" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
-      <path d="M0,0 L7,3 L0,6 Z" fill="currentColor"></path>
-    </marker>
-  </defs>
-  <text class="t" x="30" y="24">图形 API 读回</text>
-  <rect class="box" x="30" y="34" width="120" height="150"></rect>
-  <rect class="row0" x="31" y="35" width="118" height="24"></rect>
-  <text class="s" x="40" y="51">row 0 = v=0 一侧</text>
-  <text class="s" x="40" y="176">row N</text>
-  <text class="t" x="300" y="24">图像文件</text>
-  <rect class="box" x="300" y="34" width="120" height="150"></rect>
-  <rect class="row0" x="301" y="35" width="118" height="24"></rect>
-  <text class="s" x="310" y="51">row 0 = 顶行</text>
-  <text class="s" x="310" y="176">row N = 底行</text>
-  <text class="t" x="560" y="24">引擎采样</text>
-  <rect class="box" x="560" y="34" width="120" height="150"></rect>
-  <rect class="row0" x="561" y="159" width="118" height="24"></rect>
-  <text class="s" x="570" y="51">顶行</text>
-  <text class="s" x="570" y="176">v=0 = 底行</text>
-  <path class="arw" d="M154 60 L296 60"></path>
-  <text class="s" x="172" y="52">row 原样搬运</text>
-  <path class="arw" d="M424 60 L556 60"></path>
-  <text class="s" x="440" y="52">导入</text>
-  <text class="t" x="150" y="220">同一像素的 v=0 从顶部落到底部，净效果是一次垂直翻转</text>
-</svg>
-<p>三套系统分别约定 row 0 与 v=0 的位置。D3D11 staging 读回的 resource row 0 对应着色器 v=0 一侧采样到的第一行；PNG 等位图格式把 row 0 放在图片顶部；Unity <code>Texture2D</code> 以底行作为 v=0。API row 0 原样写入文件 row 0 后交给 Unity，净效果产生一次垂直翻转。</p>
-<p>方向审计把管线拆成若干边界，并记录每个边界的行序约定与翻转次数。编码边界负责一次归一化，其余环节保持原始像素和 UV 语义。行序、UV 与颜色分别验收。</p>
-<svg id="svg-texture-independent-axes" viewBox="0 0 700 150" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto" role="img" aria-label="行序、UV、颜色三条独立的轴">
-  <style>
-    #svg-texture-independent-axes .b{fill:none;stroke:currentColor;stroke-width:1.5}
-    #svg-texture-independent-axes .fill{fill:currentColor;opacity:0.07}
-    #svg-texture-independent-axes .t{fill:currentColor;font-family:sans-serif;font-size:12px}
-    #svg-texture-independent-axes .s{fill:currentColor;font-family:sans-serif;font-size:10.5px;opacity:0.85}
-  </style>
-  <rect class="b" x="20" y="34" width="210" height="86"></rect>
-  <rect class="fill" x="21" y="35" width="208" height="84"></rect>
-  <text class="t" x="36" y="58">行序</text>
-  <text class="s" x="36" y="80">像素扫描线排布</text>
-  <text class="s" x="36" y="100">属于编码边界</text>
-  <rect class="b" x="250" y="34" width="210" height="86"></rect>
-  <rect class="fill" x="251" y="35" width="208" height="84"></rect>
-  <text class="t" x="266" y="58">UV</text>
-  <text class="s" x="266" y="80">采样坐标</text>
-  <text class="s" x="266" y="100">属于网格数据，原样保留</text>
-  <rect class="b" x="480" y="34" width="200" height="86"></rect>
-  <rect class="fill" x="481" y="35" width="198" height="84"></rect>
-  <text class="t" x="496" y="58">颜色</text>
-  <text class="s" x="496" y="80">材质与着色器决定</text>
-  <text class="s" x="496" y="100">属于外观复现</text>
-  <text class="t" x="150" y="142">行序、UV 与颜色分别处理和验收</text>
-</svg>
-<p>行序属于编码边界，UV 是网格上的采样坐标，颜色由材质与着色器决定。行序归一化在编码边界完成，UV 逐分量原样保留。</p>
-<h2 id="方向要用可判定的审计验收">方向要用可判定的审计验收<a class="anchor" href="#方向要用可判定的审计验收"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>方向由可判定的像素对应关系验收。近白底图、纯色底图和对称图案对视觉翻转不敏感，而真实颜色还可能来自运行态材质与着色器，因此画面观感无法单独区分方向、解码和染色问题。</p>
-<p>方向正确性由像素对应关系审计给出：确认引擎采样的 v=0 对应文件顶行还是底行，统计各纹理的行序；或比较修改前后的图像，确认差异恰好为一次垂直翻转。该审计覆盖方向，颜色与 UV 分别由独立审计验收。</p>
-<h2 id="颜色常常不在贴图里">颜色常常不在贴图里<a class="anchor" href="#颜色常常不在贴图里"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>部分角色材质使用近白 toon 底图，最终颜色由材质常量和像素着色器合成。通道交换、tint 相乘和解码变体均无法逼近目标颜色时，分析入口转向着色器字节码与运行态材质值。颜色验收由目标染色逻辑回放完成。</p>
-<svg id="svg-texture-shader-chain" viewBox="0 0 700 130" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto" role="img" aria-label="从渲染器到着色器字节码的定位链">
-  <style>
-    #svg-texture-shader-chain .b{fill:none;stroke:currentColor;stroke-width:1.5}
-    #svg-texture-shader-chain .t{fill:currentColor;font-family:sans-serif;font-size:12px}
-    #svg-texture-shader-chain .s{fill:currentColor;font-family:sans-serif;font-size:10.5px;opacity:0.8}
-    #svg-texture-shader-chain .arw{stroke:currentColor;stroke-width:1.5;fill:none;marker-end:url(#a2h)}
-  </style>
-  <defs>
-    <marker id="a2h" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
-      <path d="M0,0 L7,3 L0,6 Z" fill="currentColor"></path>
-    </marker>
-  </defs>
-  <rect class="b" x="10" y="45" width="120" height="42"></rect>
-  <text class="t" x="24" y="63">渲染器</text>
-  <text class="s" x="24" y="79">材质数组</text>
-  <rect class="b" x="180" y="45" width="110" height="42"></rect>
-  <text class="t" x="196" y="63">Material</text>
-  <text class="s" x="196" y="79">shader 引用</text>
-  <rect class="b" x="340" y="45" width="120" height="42"></rect>
-  <text class="t" x="356" y="63">Shader 对象</text>
-  <text class="s" x="356" y="79">名称字段</text>
-  <rect class="b" x="510" y="45" width="180" height="42"></rect>
-  <text class="t" x="524" y="63">字节码容器</text>
-  <text class="s" x="524" y="79">反汇编 .asm</text>
-  <path class="arw" d="M132 66 L176 66"></path>
-  <path class="arw" d="M292 66 L336 66"></path>
-  <path class="arw" d="M462 66 L506 66"></path>
-  <text class="s" x="150" y="118">对象指针链确定字节码归属，扫描用于候选分析</text>
-</svg>
-<p>编译后的着色器字节码（如 DXBC）在进程堆里以标准容器存在。目标归属沿对象指针链确定：渲染器持有材质数组，材质持有 shader 引用，shader 对象带有名称字段，沿链取得目标字节码后反汇编。着色器 profile、贴图数、材质槽数和输出目标数量用于候选分析。反汇编 API 返回 NUL 结尾缓冲，写入 asm 前按 NUL 截断。</p>
-<p>本构建的 Normal 像素着色器已提取到稳定证据：DXBC digest 前缀为 <code>2949ad91d26f</code>，profile 是 <code>ps_5_0</code>，使用 <code>t0/t2/t3/t4/t5</code> 并输出 5 个 <code>SV_TARGET</code>。atlas 门控量 <code>_UVOffset.x</code> 位于 <code>cb1[123].x</code>，实际计算是 <code>uv = uv + cb1[123].x * (remapped - uv)</code>。8 组 palette 的色槽基址依次是 <code>cb1[28]</code>、<code>[38]</code>、<code>[48]</code>、<code>[58]</code>、<code>[68]</code>、<code>[78]</code>、<code>[88]</code>、<code>[98]</code>，对应强度在 <code>cb1[32]</code>、<code>[42]</code>、<code>[52]</code>、<code>[62]</code>、<code>[72]</code>、<code>[82]</code>、<code>[92]</code>、<code>[102]</code>；mask 合成顺序由 asm 钉死为 <code>z -> y -> x -> w</code>。</p>
-<p>Face 变体给出了更具体的运行态常量表。<code>cb2</code> 中 <code>_MainColor_0</code> 在字节 <code>0x070</code>（<code>cb2[7]</code>），<code>_MainColor_R</code> 在 <code>0x080</code>（<code>cb2[8]</code>）；<code>_BaseColor_*_1</code> 覆盖 <code>0x0D0..0x100</code>（<code>cb2[13..16]</code>），<code>_BaseColor_*_R</code> 覆盖 <code>0x110..0x140</code>（<code>cb2[17..20]</code>），<code>_BaseColor_*_4</code> 覆盖 <code>0x150..0x180</code>（<code>cb2[21..24]</code>），第 7 组 RGB 在 <code>0x190/0x1A0/0x1B0</code>（<code>cb2[25..27]</code>），第 8、9 组分别在 <code>cb2[29..32]</code> 与 <code>cb2[33..36]</code>，<code>_MainColor_1..9</code> 位于 <code>cb2[37..45]</code>。离线复刻直接按这些位置读取同一 draw 的常量缓冲。</p>
-<h2 id="染色复刻里必须精确复刻的三点">染色复刻里必须精确复刻的三点<a class="anchor" href="#染色复刻里必须精确复刻的三点"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>调色板由多组色槽和独立强度组成。着色器按 UV 阈值计算权重，再按权重把色槽合成到底图；复刻依次固定权重签名、通道映射和颜色空间。</p>
-<svg id="svg-texture-dye-pipeline" viewBox="0 0 720 180" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto" role="img" aria-label="染色合成管线">
-  <style>
-    #svg-texture-dye-pipeline .b{fill:none;stroke:currentColor;stroke-width:1.5}
-    #svg-texture-dye-pipeline .fill{fill:currentColor;opacity:0.07}
-    #svg-texture-dye-pipeline .t{fill:currentColor;font-family:sans-serif;font-size:12px}
-    #svg-texture-dye-pipeline .s{fill:currentColor;font-family:sans-serif;font-size:10.5px;opacity:0.85}
-    #svg-texture-dye-pipeline .arw{stroke:currentColor;stroke-width:1.5;fill:none;marker-end:url(#a2p)}
-  </style>
-  <defs>
-    <marker id="a2p" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
-      <path d="M0,0 L7,3 L0,6 Z" fill="currentColor"></path>
-    </marker>
-  </defs>
-  <rect class="b" x="10" y="30" width="130" height="46"></rect>
-  <text class="t" x="22" y="52">底图 RGB</text>
-  <text class="s" x="22" y="68">sRGB → 线性</text>
-  <rect class="b" x="190" y="30" width="150" height="46"></rect>
-  <rect class="fill" x="191" y="31" width="148" height="44"></rect>
-  <text class="t" x="202" y="52">权重签名累加</text>
-  <text class="s" x="202" y="68">完整权重 tuple 作为键</text>
-  <rect class="b" x="390" y="30" width="150" height="46"></rect>
-  <text class="t" x="402" y="52">通道→色槽合成</text>
-  <text class="s" x="402" y="68">固定次序</text>
-  <rect class="b" x="590" y="30" width="120" height="46"></rect>
-  <text class="t" x="602" y="52">线性 → sRGB</text>
-  <path class="arw" d="M142 53 L186 53"></path>
-  <path class="arw" d="M342 53 L386 53"></path>
-  <path class="arw" d="M542 53 L586 53"></path>
-  <text class="s" x="120" y="132">mask 通道分别对应“红/绿/蓝/黑”几个色槽，顺序由 asm 决定</text>
-  <text class="s" x="120" y="156">mask 保留原始数值，不执行色彩转换</text>
-</svg>
-<p>第一，权重签名是可组合值。UV 落在跨 tile 区间时，同一像素可能同时命中多个权重，因此图元拆分和缓存使用完整权重 tuple 作为键。第二，mask 通道到色槽的映射和叠加次序由 asm 固定。第三，贴图 RGB 先从 sRGB 解到线性，乘运行态颜色后再编码回 sRGB；mask 通道按原始数值归一化。</p>
-<h2 id="组数区域级联与通道冲突">组数、区域级联与通道冲突<a class="anchor" href="#组数区域级联与通道冲突"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>染色逻辑还包含组数、区域级联与通道来源三项运行态约束。</p>
-<p>同一套着色器可对应不同的调色板组数：完整材质使用多组，简化材质只使用一组全局调色板。离线复刻先读取活动组数；单组材质将该组全局应用，多组材质再按 UV 区域权重索引。这样可以避免零填充组覆盖有效颜色。</p>
-<p>部分材质的区域主色采用按固定顺序执行的包含式级联。边界使用包含比较，接缝处可同时命中相邻区域，剩余权重折回默认区。离线实现保持相同的比较方式和执行顺序。</p>
-<p>通道来源需要同时记录 asm 采样结论和导出像素统计。一次已确认的例外中，asm 采样 alpha，而压缩纹理的 alpha 近似常量、green 承载空间信息。复刻使用有效数据通道，并在结果中保留 asm 结论、像素统计和例外标记三项证据。</p>
-<h2 id="线性运行态颜色被声明成-color-会二次转换">线性运行态颜色被声明成 Color 会二次转换<a class="anchor" href="#线性运行态颜色被声明成-color-会二次转换"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>运行态上传给着色器的颜色已经处于线性空间。若承载属性声明为会执行色彩空间转换的 <code>Color</code> 类型，引擎会再次转换该值，使亮面压暗。</p>
-<svg id="svg-texture-linear-color" viewBox="0 0 700 150" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto" role="img" aria-label="线性运行态颜色被声明为 Color 的二次转换">
-  <style>
-    #svg-texture-linear-color .b{fill:none;stroke:currentColor;stroke-width:1.5}
-    #svg-texture-linear-color .t{fill:currentColor;font-family:sans-serif;font-size:11.5px}
-    #svg-texture-linear-color .s{fill:currentColor;font-family:sans-serif;font-size:10.5px;opacity:0.85}
-    #svg-texture-linear-color .arw{stroke:currentColor;stroke-width:1.5;fill:none;marker-end:url(#a2c)}
-    #svg-texture-linear-color .bad{stroke-dasharray:4 3}
-  </style>
-  <defs>
-    <marker id="a2c" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
-      <path d="M0,0 L7,3 L0,6 Z" fill="currentColor"></path>
-    </marker>
-  </defs>
-  <text class="t" x="14" y="20">错误：声明为 Color</text>
-  <rect class="b" x="14" y="30" width="150" height="34"></rect><text class="s" x="26" y="51">线性运行态颜色</text>
-  <rect class="b bad" x="230" y="30" width="150" height="34"></rect><text class="s" x="242" y="51">引擎再转一次</text>
-  <rect class="b" x="450" y="30" width="180" height="34"></rect><text class="s" x="462" y="51">亮面变暗（错）</text>
-  <path class="arw" d="M166 47 L226 47"></path>
-  <path class="arw" d="M382 47 L446 47"></path>
-  <text class="t" x="14" y="98">修复：声明为 Vector，原样上传</text>
-  <rect class="b" x="14" y="108" width="150" height="30"></rect><text class="s" x="26" y="127">线性运行态颜色</text>
-  <rect class="b" x="230" y="108" width="150" height="30"></rect><text class="s" x="242" y="127">原样参与材质</text>
-  <rect class="b" x="450" y="108" width="180" height="30"></rect><text class="s" x="462" y="127">显示正确</text>
-  <path class="arw" d="M166 123 L226 123"></path>
-  <path class="arw" d="M382 123 L446 123"></path>
-</svg>
-<p>该属性声明成向量类型并原样上传，着色器保持线性空间计算。sRGB 纹理采样时解码，运行态颜色保持线性参与材质与 toon 光照，最终渲染目标再编码为显示 sRGB。排查时核对承载属性的类型与色彩空间元数据。</p>
-<p>MatCap、高光和 rim 等视角相关外观属于实时光照项，逐帧随视角变化。复刻着色器按当前视图计算这些项，贴图仅承载静态纹理数据。</p>
-<h2 id="边界与迁移">边界与迁移<a class="anchor" href="#边界与迁移"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
-<p>这套贴图提取分为四个责任边界：抓取生成同一 draw 的自洽资源集合；解码完成字节到像素的翻译；编码边界统一行序；复刻着色器负责运行态外观。资源身份负责锁定目标 draw，常量与贴图来自同一快照，资源变换经过输入域验证，资源格式与视图格式分别记录，打包格式按位布局解码，单通道遵循硬件采样语义。方向由行序审计验收；染色按权重 tuple、通道映射和线性色彩空间复现。</p>
-<p>这些约束共同决定最终产物能否复现目标 draw 的输入与外观。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-u3wiumwa> <div class="nav-cell" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/22-archetype-ecs-design/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa> <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8592;</span> 上一篇
-</span> <span class="nav-title" data-astro-cid-u3wiumwa>一种有意思的 Archetype ECS 的设计与取舍</span> </a> </div> <div class="nav-cell next" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/39-spawn-director-design/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa>
-下一篇 <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8594;</span> </span> <span class="nav-title" data-astro-cid-u3wiumwa>确定性刷怪导演系统的结构设计</span> </a> </div> </nav> </div> </div>   <footer class="micro"> <a class="back" href="/blog/minimalist/"> <span class="arrow" aria-hidden="true">&#8592;</span> 返回技术索引 </a> <span class="copy">&copy; 2026 Shrei</span> <span class="colophon">Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div>  </body></html>
+博客主站 <span class="arrow" aria-hidden="true">&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-ldbnljcb> <p class="category micro" data-astro-cid-ldbnljcb>Unity 逆向</p> <h1 data-astro-cid-ldbnljcb> 运行态贴图提取：采样状态与角色外观  </h1> <div class="meta micro" data-astro-cid-ldbnljcb> <time datetime="2026-08-12" data-astro-cid-ldbnljcb>2026-08-12</time> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>11 min</span> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>2,316 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span class="tags" data-astro-cid-ldbnljcb>Reverse Engineering / Unity / Graphics / D3D11 / Texture / Shader</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#同一把锁未必对应完整的一次-draw" data-astro-cid-wy3xnbws>同一把锁未必对应完整的一次 draw</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#资源身份与资源内容都要能追溯" data-astro-cid-wy3xnbws>资源身份与资源内容都要能追溯</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#存储格式与采样视图决定了数值含义" data-astro-cid-wy3xnbws>存储格式与采样视图决定了数值含义</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#翻转应由像素对应关系决定" data-astro-cid-wy3xnbws>翻转应由像素对应关系决定</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#角色颜色可能来自多份输入共同合成" data-astro-cid-wy3xnbws>角色颜色可能来自多份输入共同合成</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#通道矛盾意味着证据还没有对齐" data-astro-cid-wy3xnbws>通道矛盾意味着证据还没有对齐</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#贴图与着色共同组成角色外观" data-astro-cid-wy3xnbws>贴图与着色共同组成角色外观</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+</a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <p>一张能正常打开的贴图，只证明字节被解释成了图像。它可能来自错误的 draw，可能采用了不同的采样视图，也可能只保存角色外观中的一层输入。</p>
+<p>运行态提取中，最费时间的往往是把这些问题混在一起处理：颜色不对就交换通道，图案错位就翻转 UV，亮度不足就再乘一个系数。局部看起来接近了，整条转换链却越来越难解释。</p>
+<p>更有效的分析顺序是先确认资源来自哪里，再确认字节怎样变成采样值，最后还原着色器怎样使用这些值。快照、像素和外观属于不同阶段，需要各自的证据。</p>
+<h2 id="同一把锁未必对应完整的一次-draw">同一把锁未必对应完整的一次 draw<a class="anchor" href="#同一把锁未必对应完整的一次-draw"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>图形状态通常由多次调用逐步设置：切换着色器，绑定纹理和常量，设置输出，最后发起绘制。若只在任意 API 边界暂停，可能恰好停在切换中途。</p>
+<p>此时着色器已经属于下一趟 draw，某些输入槽仍保留上一趟的资源。它们分别都有效，组合起来却从未参与过真正的绘制。仅凭着色器名称和渲染目标大小，很容易接受这份混合状态。</p>
+<p>原始记录中，资源身份的分布帮助区分了稳定候选与过渡状态。它适合筛选和发现问题，但要形成可回放的输入，还需要把观察关联到实际 draw：确认事件位置，并在资源被覆盖之前保存该事件使用的数据。</p>
+<p>CPU 侧的一把锁可以保护抓取代码自己的状态，不能自动冻结 GPU 执行。资源副本的时序、命令顺序和完成同步仍然需要单独成立。</p>
+<p>同理，逐个请求纹理槽也可能跨越多个事件。纹理、采样器和常量来自同一绘制事件，后续计算才有一致的输入。若保存的是 draw 之前的渲染目标，它表示已有内容；验证 draw 的输出则需要对应的执行后状态。</p>
+<h2 id="资源身份与资源内容都要能追溯">资源身份与资源内容都要能追溯<a class="anchor" href="#资源身份与资源内容都要能追溯"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>提取入口可以沿 GameObject、Renderer、Material 到 Texture2D。CPU 副本仍在时直接读取，副本已释放时再从图形资源读回。这条对象链帮助确定归属，图形 API 中的绑定则说明资源在某次绘制中的用途。</p>
+<p>地址只在相应生命周期内有意义。对象销毁后地址可能复用，同一纹理也可能被逐帧改写。因此，离线分析还需要事件编号、资源描述和所保存内容的对应关系。</p>
+<p>这篇文章所依据的 Unity 构建与<a href="../23-runtime-model-extraction/">模型提取篇</a>一致。该构建中取得的对象布局，与这次绘制时实际绑定的资源，共同构成后续分析的起点。</p>
+<h2 id="存储格式与采样视图决定了数值含义">存储格式与采样视图决定了数值含义<a class="anchor" href="#存储格式与采样视图决定了数值含义"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>GPU 资源的字节布局和着色器看到的数值不是同一层描述。TYPELESS 资源可以配合不同类型的视图；sRGB 视图还可能在采样时完成颜色解码。只保存底层格式，离线程序就可能漏掉或重复一次转换。</p>
+<p>打包格式也不能按普通 RGBA 字节拆分。例如 R10G10B10A2 与 R11G11B10 的分量位宽、数值解释都不同。读回时的行跨度还可能包含填充，不能总用宽度乘像素大小定位下一行。</p>
+<p>3D LUT 则提供了一个容易忽略的例子：着色器按宽、高、深采样，CPU 数组可能按深、高、宽排列。只用灰色测试时，三个分量相同，轴序错误也不显眼；使用非对称的颜色输入，才能区分这些排列。</p>
+<p>还要确认输入值到纹理坐标的映射。若某个 LUT 将零到一的输入映射到首末 texel 中心，那么纹理坐标与格号的关系是：</p>
+<div class="expressive-code"><link rel="stylesheet" href="/blog/astro/ec.iz9dg.css"><script type="module" src="/blog/astro/ec.0vx5m.js"></script><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">cell = coordinate * textureSize - 0.5</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="cell = coordinate * textureSize - 0.5"><div></div></button></div></figure></div>
+<p>输入值、归一化纹理坐标和格号各有含义。混用它们会造成半格偏移，即使图像整体仍然平滑，也已经不是原来的变换。</p>
+<h2 id="翻转应由像素对应关系决定">翻转应由像素对应关系决定<a class="anchor" href="#翻转应由像素对应关系决定"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>贴图经过读回、图像编码和引擎导入时，会遇到不同的行序与 UV 约定。是否需要翻转，取决于这条具体路径，不能仅凭引擎名称判断。</p>
+<p>一个上下不对称的测试图能提供明确证据：标记四角，确认文件第一行对应哪个角，再检查目标采样路径的 <code>v=0</code> 落在哪里。这样才能分清变化发生在字节排列、导入过程还是采样坐标上。</p>
+<p>全白底图和对称纹理不适合做这项验证。它们在翻转前后几乎相同，很容易让错误进入后续颜色分析。</p>
+<p>确定对应关系后，可以选择一个边界统一行序，并记录这次转换。若文件已经翻转，着色器又使用 <code>1-v</code>，两个修正会互相抵消。模型的原始 UV 与图像编码约定分别保留，后续才容易判断哪一处需要变换。</p>
+<h2 id="角色颜色可能来自多份输入共同合成">角色颜色可能来自多份输入共同合成<a class="anchor" href="#角色颜色可能来自多份输入共同合成"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>一些 toon 材质的底图接近白色，最终颜色主要由运行态调色板与遮罩决定。此时反复调整底图解码，并不能恢复角色外观。</p>
+<p>在所分析的一个变体中，atlas 重映射受材质常量控制：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">uv = uv + _UVOffset.x * (remappedUV - uv)</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="uv = uv + _UVOffset.x * (remappedUV - uv)"><div></div></button></div></figure></div>
+<p>这个常量为零时保留原始 UV，为一时使用重映射结果。只看到重映射代码就把它永久应用到导出的网格，会忽略实际运行态选择。</p>
+<p>同一样本的染色遮罩按 <code>z → y → x → w</code> 顺序参与合成。若使用的是逐层插值，顺序会改变结果，不能把几个通道随意重排成看起来熟悉的 RGBA 顺序。这些都是该着色器的具体语义，而非 Unity 材质的通用规则。</p>
+<p>颜色空间也要沿数据流确认。sRGB 纹理可能已经由视图解码，上传的材质常量可能已经是线性值。再通过会执行颜色转换的属性接口传入一次，就可能重复转换。关键是确认每次转换发生在哪里，而不是仅凭属性叫 Color 还是 Vector 作判断。</p>
+<h2 id="通道矛盾意味着证据还没有对齐">通道矛盾意味着证据还没有对齐<a class="anchor" href="#通道矛盾意味着证据还没有对齐"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>旧记录里有一个值得重新审视的判断：反汇编使用 alpha，但导出图的 alpha 接近常量，green 却含有空间变化，于是改用 green 复刻。</p>
+<p>这个观察只能证明现有材料之间存在矛盾，尚不足以证明 green 是正确通道。可能的原因包括抓错资源、视图解释不同、压缩解码错误、采样前后的通道重排，或分析了另一种着色器变体。</p>
+<p>即使替换通道后局部观感改善，也不能排除这些原因。需要回到同一事件的资源绑定与实际采样值，确认着色器究竟读到了什么。在这条关系闭合之前，应保留矛盾和未确定状态，避免把试出来的结果写成已经确认的规则。</p>
+<p>这个例子也解释了为什么最终截图不能独自承担验证。多个错误可能相互抵消，得到接近的颜色；一旦更换材质或视角，抵消关系就消失了。</p>
+<h2 id="贴图与着色共同组成角色外观">贴图与着色共同组成角色外观<a class="anchor" href="#贴图与着色共同组成角色外观"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>贴图可以保存底色、遮罩和查找表，却无法单独保存随视角变化的 MatCap、高光和轮廓光。若目标是复现运行态外观，这些部分仍要由相应的着色计算产生。</p>
+<p>因此，一份可解释的提取结果，应能从最终像素追溯到对应事件，再追溯到纹理、常量、采样方式与着色器。抓取负责取得一致输入，解码负责恢复采样数值，坐标转换负责像素对应关系，着色器负责组合外观。</p>
+<p>这些关系把最终颜色接回了具体输入。纹理翻转、重复颜色转换和错误通道即使都表现为画面异常，也能沿不同的数据路径找到原因。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-u3wiumwa> <div class="nav-cell" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/22-archetype-ecs-design/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa> <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8592;</span> 上一篇
+</span> <span class="nav-title" data-astro-cid-u3wiumwa>Archetype ECS 中的定长描述符与查询切分</span> </a> </div> <div class="nav-cell next" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/39-spawn-director-design/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa>
+下一篇 <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8594;</span> </span> <span class="nav-title" data-astro-cid-u3wiumwa>刷怪导演中的随机、容量与生命周期</span> </a> </div> </nav> </div> </div>   <footer class="micro"> <a class="back" href="/blog/minimalist/"> <span class="arrow" aria-hidden="true">&#8592;</span> 返回技术索引 </a> <span class="copy">&copy; 2026 Shrei</span> <span class="colophon">Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div>  </body></html>
