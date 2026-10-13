@@ -1,0 +1,161 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>终末地定制 Bundle 的目录与压缩 · Shrei</title><meta name="description" content="一个 2461 字节的小包不被任何通用工具识别。从识别头部、放下一个对不上的 size 字段，到用两种解压错误拆开目录与数据的处理链，最后让物理文件尾、解压长度和 node 在同一处闭合，并说明 LZ4Inv 与标准 LZ4 的两处差别。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/45-endfield-bundle-layout-and-compression/"><meta property="og:title" content="终末地定制 Bundle 的目录与压缩 · Shrei"><meta property="og:description" content="一个 2461 字节的小包不被任何通用工具识别。从识别头部、放下一个对不上的 size 字段，到用两种解压错误拆开目录与数据的处理链，最后让物理文件尾、解压长度和 node 在同一处闭合，并说明 LZ4Inv 与标准 LZ4 的两处差别。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/45-endfield-bundle-layout-and-compression/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><script>(function(){const dayStartHour = 6;
+const nightStartHour = 18;
+
+    (function ()
+    {
+        let stored = null;
+        try
+        {
+            stored = localStorage.getItem('shrei-theme');
+        }
+        catch (_)
+        {
+            /* 隐私模式下不可用，按本地时间自动选择 */
+        }
+
+        const isNight = () =>
+        {
+            const hour = new Date().getHours();
+            return hour < dayStartHour || hour >= nightStartHour;
+        };
+
+        const themeColor = document.querySelector('[data-theme-color]');
+        const apply = () =>
+        {
+            const dark = stored === 'dark' || (stored !== 'light' && isNight());
+            document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
+            if (themeColor)
+            {
+                themeColor.content = dark ? '#151412' : '#f4f2ec';
+            }
+        };
+
+        apply();
+
+        if (stored !== 'light' && stored !== 'dark')
+        {
+            const schedule = () =>
+            {
+                const now = new Date();
+                const next = new Date(now);
+                if (now.getHours() < dayStartHour)
+                {
+                    next.setHours(dayStartHour, 0, 0, 0);
+                }
+                else if (now.getHours() < nightStartHour)
+                {
+                    next.setHours(nightStartHour, 0, 0, 0);
+                }
+                else
+                {
+                    next.setDate(next.getDate() + 1);
+                    next.setHours(dayStartHour, 0, 0, 0);
+                }
+
+                window.setTimeout(() =>
+                {
+                    apply();
+                    schedule();
+                }, Math.max(1000, next.getTime() - now.getTime()));
+            };
+
+            schedule();
+        }
+    })();
+})();</script><link rel="stylesheet" href="/blog/astro/_slug_.1l8rUkZ0.css"><style>.frame>.topbar{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.frame>.topbar>.brand{justify-self:start;transition:color .14s ease}.frame>.topbar>.brand:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.frame>.topbar>.brand:hover{color:var(--red)}.frame>.topbar>.center{min-width:0;text-align:center}.frame>.topbar>.to-home{justify-self:end;transition:color .14s ease}.frame>.topbar>.to-home .arrow{display:inline-block;transition:transform .14s ease}.frame>.topbar>.to-home:hover{color:var(--red)}.frame>.topbar>.to-home:hover .arrow{transform:translate(.25em)}.frame>footer{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}.frame>footer .back{transition:color .14s ease}.frame>footer .back .arrow{display:inline-block;transition:transform .14s ease}.frame>footer .back:hover{color:var(--red)}.frame>footer .back:hover .arrow{transform:translate(-.25em)}.frame>footer .colophon{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.frame>.topbar{grid-template-columns:1fr auto}.frame>.topbar>.center{display:none}.frame>footer{grid-template-columns:1fr;gap:.4rem}.frame>footer .colophon{justify-self:start}}@media print{.frame>.topbar>.to-home,.frame>footer{display:none}}:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}
+</style><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"></head> <body> <div class="frame"> <div class="topbar micro"> <a class="brand" href="/blog/minimalist/">Shrei — Technical Index</a> <div class="center"><span class="topbar-category" data-astro-cid-wy3xnbws>Unity 逆向</span></div> <a class="to-home" href="/blog/">
+博客主站 <span class="arrow" aria-hidden="true">&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-ldbnljcb> <p class="category micro" data-astro-cid-ldbnljcb>Unity 逆向</p> <h1 data-astro-cid-ldbnljcb> 终末地定制 Bundle 的目录与压缩  </h1> <div class="meta micro" data-astro-cid-ldbnljcb> <time datetime="2026-08-19" data-astro-cid-ldbnljcb>2026-08-19</time> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>11 min</span> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>2,516 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span class="tags" data-astro-cid-ldbnljcb>Reverse Engineering / Unity / AssetBundle / LZ4 / Methodology</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#先确认是哪一版头" data-astro-cid-wy3xnbws>先确认是哪一版头</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#一个对不上的-size-字段" data-astro-cid-wy3xnbws>一个对不上的 size 字段</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#两种失败把两条处理链拆开" data-astro-cid-wy3xnbws>两种失败把两条处理链拆开</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#lz4inv-只改了两处" data-astro-cid-wy3xnbws>LZ4Inv 只改了两处</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#三个长度在同一处闭合" data-astro-cid-wy3xnbws>三个长度在同一处闭合</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#重封装把剩下的工作交还通用解析器" data-astro-cid-wy3xnbws>重封装：把剩下的工作交还通用解析器</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#从小包到完整资源组" data-astro-cid-wy3xnbws>从小包到完整资源组</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#可以带走的做法" data-astro-cid-wy3xnbws>可以带走的做法</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#附最小样本参考值" data-astro-cid-wy3xnbws>附：最小样本参考值</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+</a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <p>外层 VFS 已经交出了正确的文件字节，通用解析器却仍然读不到对象。最小的那个包只有 2461 字节，开头是 <code>40 19 9A FE</code>，没有 <code>UnityFS\0</code>，标准识别方式在第一个字节就走不下去。</p>
+<p>但它并不是一团随机数据。继续往下看，熟悉的资源组织都还在：头部指向一个块目录，目录描述压缩块和 node，解压出来仍是 SerializedFile 加 <code>.resS</code>。变的是每一层的编码方式，而不是层次本身。这给了一个可操作的思路：不必从零猜格式，只要把每一层的编码逐个换回来，再让各层之间的长度关系替我们判断换得对不对。</p>
+<p>候选公式来自 AnimeStudio 的正式版兼容实现，我固定在提交 <a href="https://github.com/Escartem/AnimeStudio/blob/1ccfbc16bf7fe625e8295bac8074ac3b1b9a065b/AnimeStudio/VFSFile.cs">1ccfbc16</a> 上核对。公开实现在这里扮演的是假设，本机样本负责检验它。这条资源恢复路线发生在后续<a href="/blog/posts/47-endfield-startup-instruction-emission/">启动壳还原</a>之前。</p>
+<h2 id="先确认是哪一版头">先确认是哪一版头<a class="anchor" href="#先确认是哪一版头"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>同一个游戏的不同测试版本用过不同的头布局，字段解释一旦套错版本，后面每一步都会得到看似合理的错误数字。所以第一件事是判断样本属于哪一版。</p>
+<p>正式版头用前两个大端 <code>uint32</code> 做自校验，记为 <code>a</code>、<code>b</code>：</p>
+<div class="expressive-code"><link rel="stylesheet" href="/blog/astro/ec.iz9dg.css"><script type="module" src="/blog/astro/ec.0vx5m.js"></script><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">x = a XOR 0x4A92F0CD</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">expected = ((4 * x) AND 0xFFFF0000)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">           </span></span><span style="--0:#e1e4e8;--1:#24292e">XOR ROR32(x, 14)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">           </span></span><span style="--0:#e1e4e8;--1:#24292e">XOR 0xD8B1E637</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">valid = (b == expected)</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="x = a XOR 0x4A92F0CDexpected = ((4 * x) AND 0xFFFF0000)           XOR ROR32(x, 14)           XOR 0xD8B1E637valid = (b == expected)"><div></div></button></div></figure></div>
+<p>样本满足这条关系，不满足 CB3 的候选关系，于是后面统一按正式版解释。解出的头给出 <code>encodingFlags = 8</code>、<code>headerSize = 48</code>、块目录压缩前后为 <code>0x65</code> 和 <code>0x89</code> 字节、<code>flags = 0x243</code>。块目录因此占据 <code>[0x30, 0x95)</code>；<code>flags &#x26; 0x200</code> 要求目录之后按 16 字节对齐，数据从 <code>0xA0</code> 开始。</p>
+<p>这个 <code>0xA0</code> 先记下来。小包只有一个压缩块，它从哪里开始、占多少字节，最后必须恰好落在物理文件尾上，这会是整篇最有力的一条约束。</p>
+<h2 id="一个对不上的-size-字段">一个对不上的 size 字段<a class="anchor" href="#一个对不上的-size-字段"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>按候选公式解出的头部 <code>size</code> 是 <code>0xE370CDAAE370C437</code>，截成 32 位也还是 <code>0xE370C437</code>，与 2461 相去甚远。</p>
+<p>这里最容易走错的一步，是相信字段名，开始反复调整公式，直到它“看起来像文件长度”。可是同一时刻，目录区间、块区间和 node 覆盖都能独立闭合；如果坚持让这个值等于物理长度，反而会把一个已经能完整解析的样本判为失败。</p>
+<p>所以我把它放下了：边界改用输入流本身的长度确定，再检查每个压缩块是否落在流内、解压结果能否容纳全部 node。<code>size</code> 的解析结果原样保留，它真正的含义留给找到实际消费它的代码时再解释。一个字段叫什么，不如其他结构是否已经自洽重要。</p>
+<h2 id="两种失败把两条处理链拆开">两种失败把两条处理链拆开<a class="anchor" href="#两种失败把两条处理链拆开"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>块目录和数据块都要先经过 VFSAES 变换，自然的假设是它们后面也走同一种解压。实际试下来并非如此，而失败信息本身就说明了问题出在哪一层。</p>
+<p>块目录这边很顺：原始字节交给标准 LZ4，报 <code>invalid match distance 26037</code>；先做 VFSAES 再交给标准 LZ4，输出恰好 137 字节，正是头里声明的 <code>0x89</code>。</p>
+<p>数据块却不一样。原始字节直接交给 LZ4Inv，报 <code>invalid match distance 34048</code>；做完 VFSAES 交给标准 LZ4，报 <code>invalid match distance 22</code>；做完 VFSAES 交给 LZ4Inv，才输出恰好 6116 字节。于是两条链是：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">块目录：VFSAES → 标准 LZ4 → 字段逆变换</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">数据块：VFSAES → LZ4Inv → node 数据</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="块目录：VFSAES → 标准 LZ4 → 字段逆变换数据块：VFSAES → LZ4Inv → node 数据"><div></div></button></div></figure></div>
+<p>其中 <code>distance 22</code> 最有帮助。密码变换已经做过，标准 LZ4 却在很靠前的位置失败，说明剩下的是解压格式问题，和 key 无关。如果此时回头继续调 key，就会把两个独立阶段搅在一起，永远调不出来。</p>
+<p>判断“成功”也要比看到字符串更严格。解压器可能在出错之前先吐出一段可读前缀，所以这里要求两件事同时成立：消费的正好是目录给出的输入范围，输出正好是声明的长度。</p>
+<h2 id="lz4inv-只改了两处">LZ4Inv 只改了两处<a class="anchor" href="#lz4inv-只改了两处"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>LZ4Inv 保留了 literal、match 和扩展长度的整个状态机，只动了两处编码。</p>
+<p>第一处是 token。标准 LZ4 把 literal 长度和 match 长度分别放在高、低半字节；LZ4Inv 把它们按两位一组交错：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">bit:       7  6  5  4  3  2  1  0</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">标准 LZ4:  L3 L2 L1 L0 M3 M2 M1 M0</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">LZ4Inv:    M3 M2 L3 L2 M1 M0 L1 L0</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="bit:       7  6  5  4  3  2  1  0标准 LZ4:  L3 L2 L1 L0 M3 M2 M1 M0LZ4Inv:    M3 M2 L3 L2 M1 M0 L1 L0"><div></div></button></div></figure></div>
+<p>两种布局可以共用一段代码恢复：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="python"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#F97583;--1:#BF3441">def</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#B392F0;--1:#6F42C1">token_lengths</span><span style="--0:#E1E4E8;--1:#24292E">(token, inverted):</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">if</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">not</span><span style="--0:#E1E4E8;--1:#24292E"> inverted:</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent">        </span><span style="--0:#F97583;--1:#BF3441">return</span><span style="--0:#E1E4E8;--1:#24292E"> token </span><span style="--0:#F97583;--1:#BF3441">>></span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">4</span><span style="--0:#E1E4E8;--1:#24292E">, token </span><span style="--0:#F97583;--1:#BF3441">&#x26;</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">0x</span><span style="--0:#79B8FF;--1:#005CC5">0F</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">literal_bits </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> token </span><span style="--0:#F97583;--1:#BF3441">&#x26;</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">0x</span><span style="--0:#79B8FF;--1:#005CC5">33</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">match_bits </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> (token </span><span style="--0:#F97583;--1:#BF3441">&#x26;</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">0x</span><span style="--0:#79B8FF;--1:#005CC5">CC</span><span style="--0:#E1E4E8;--1:#24292E">) </span><span style="--0:#F97583;--1:#BF3441">>></span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">2</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">literal_length </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> (literal_bits </span><span style="--0:#F97583;--1:#BF3441">&#x26;</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">0x</span><span style="--0:#79B8FF;--1:#005CC5">03</span><span style="--0:#E1E4E8;--1:#24292E">) </span><span style="--0:#F97583;--1:#BF3441">|</span><span style="--0:#E1E4E8;--1:#24292E"> (literal_bits </span><span style="--0:#F97583;--1:#BF3441">>></span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">2</span><span style="--0:#E1E4E8;--1:#24292E">)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span class="indent"><span style="--0:#E1E4E8;--1:#24292E">    </span></span><span style="--0:#E1E4E8;--1:#24292E">match_length </span><span style="--0:#F97583;--1:#BF3441">=</span><span style="--0:#E1E4E8;--1:#24292E"> (match_bits </span><span style="--0:#F97583;--1:#BF3441">&#x26;</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">0x</span><span style="--0:#79B8FF;--1:#005CC5">03</span><span style="--0:#E1E4E8;--1:#24292E">) </span><span style="--0:#F97583;--1:#BF3441">|</span><span style="--0:#E1E4E8;--1:#24292E"> (match_bits </span><span style="--0:#F97583;--1:#BF3441">>></span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">2</span><span style="--0:#E1E4E8;--1:#24292E">)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">8</div></div><div class="code"><span class="indent">    </span><span style="--0:#F97583;--1:#BF3441">return</span><span style="--0:#E1E4E8;--1:#24292E"> literal_length, match_length</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="def token_lengths(token, inverted):    if not inverted:        return token >> 4, token &#x26; 0x0F    literal_bits = token &#x26; 0x33    match_bits = (token &#x26; 0xCC) >> 2    literal_length = (literal_bits &#x26; 0x03) | (literal_bits >> 2)    match_length = (match_bits &#x26; 0x03) | (match_bits >> 2)    return literal_length, match_length"><div></div></button></div></figure></div>
+<p>第二处是 match distance，从标准的小端 <code>uint16</code> 改成了大端。这两处必须一起还原。只改一处时同样会报非法距离，而某一次距离是否合法还取决于解码器当时已经输出了多少字节，所以单看一条报错，分辨不出是 token 还是端序出了错。</p>
+<p>固定版本的实现见 <a href="https://github.com/Escartem/AnimeStudio/blob/1ccfbc16bf7fe625e8295bac8074ac3b1b9a065b/AnimeStudio/LZ4/LZ4Inv.cs">LZ4Inv.cs</a>。VFSAES 的抽取与散回在<a href="/blog/posts/46-endfield-sparse-vfsaes-and-parameters/">下一篇</a>展开。</p>
+<h2 id="三个长度在同一处闭合">三个长度在同一处闭合<a class="anchor" href="#三个长度在同一处闭合"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>块目录解压后，计数、尺寸、标志、offset 和名称还各有一层字段逆变换，常量与字节顺序见<a href="/blog/posts/46-endfield-sparse-vfsaes-and-parameters/">参数篇</a>。还原出来的目录很短：一个压缩块，压缩 <code>2301 / 0x8FD</code> 字节，解压 <code>6116 / 0x17E4</code> 字节，标志 <code>5</code>；两个 node，都叫 <code>CAB-d29c4e95cbb3b4d25d7f11ebc90d49ca</code>，一个是 SerializedFile，一个带 <code>.resS</code> 后缀。</p>
+<p>这些数字能接成一个完整的小包：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">压缩块：0xA0 + 2301 = 2461，正好抵达物理文件尾</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">解压流：6100 + 16 = 6116，两个 node 覆盖全部数据</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">资源关系：SerializedFile 与同名 .resS</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="压缩块：0xA0 + 2301 = 2461，正好抵达物理文件尾解压流：6100 + 16 = 6116，两个 node 覆盖全部数据资源关系：SerializedFile 与同名 .resS"><div></div></button></div></figure></div>
+<p>三条约束各管一段：物理文件尾约束输入范围，解压长度约束压缩处理，node 约束输出切分。它们在同一组结果上同时成立，比找到一个像样的 CAB 名称有说服力得多。前面放下 <code>size</code> 字段的理由也在这里：真正的边界早已由这三条给出。</p>
+<h2 id="重封装把剩下的工作交还通用解析器">重封装：把剩下的工作交还通用解析器<a class="anchor" href="#重封装把剩下的工作交还通用解析器"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>拿到全部 node 以后，没有必要让解析器学会定制头和 LZ4Inv。写一个标准 UnityFS 容器即可：签名 <code>UnityFS\0</code>，格式版本 6，引擎版本 <code>2021.3.34f5</code>，块数据 hash 用解压数据的 MD5；块按 None 压缩写入，压缩与未压缩长度相同，后面追加解码出的资源字节。</p>
+<p>这一步只换容器，SerializedFile 和 <code>.resS</code> 的字节保持原样。最小包的产物长 6319 字节，UnityPy 读到两个对象：一个 <code>4×4 Texture2D T_default_mro_MRO</code> 和一个 AssetBundle。输入与产物的 SHA-256 记在文末，作为后续回归的基线。</p>
+<h2 id="从小包到完整资源组">从小包到完整资源组<a class="anchor" href="#从小包到完整资源组"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>同一套实现随后恢复了 <code>InitBundle</code> 的 1048 个包，解析出 19,370 个 Unity 对象，解包错误为零；三个大型角色 Shader 包也继续读到了 <code>subShaderBlobs</code>、segment 和 DXBC 程序，后续分析见<a href="/blog/posts/31-endfield-character-wetness-shader/">角色湿润篇</a>。</p>
+<p>包的数量说明这套实现跑过多大的语料，但多块、多 node、目录位于文件尾这些分支是否被走到，要看实际输入的布局，不能拿总包数代替。</p>
+<h2 id="可以带走的做法">可以带走的做法<a class="anchor" href="#可以带走的做法"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>面对一个“熟悉但不认识”的容器格式，这次有三点可以直接复用。先挑最小的样本，让头、目录和尾部的关系一眼就能核对。把公开实现当作假设，用相互独立的长度约束去检验它，比如“偏移加压缩长度等于文件尾”“node 之和等于解压长度”，而不是相信某个字段的名字。最后，认真读失败信息：同一个输入在不同组合下给出的不同错误，往往能直接告诉你哪一层已经对了、哪一层还没对，从而避免回头去调一个本来没有问题的参数。</p>
+<h2 id="附最小样本参考值">附：最小样本参考值<a class="anchor" href="#附最小样本参考值"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>项目</th><th>值</th></tr></thead><tbody><tr><td>文件长度</td><td>2461 字节，开头 <code>40 19 9A FE</code></td></tr><tr><td>encodingFlags / headerSize</td><td><code>8</code> / <code>48</code></td></tr><tr><td>块目录压缩 / 解压</td><td><code>101 / 0x65</code>，<code>137 / 0x89</code></td></tr><tr><td>flags</td><td><code>0x243</code>，目录区间 <code>[0x30, 0x95)</code>，数据起点 <code>0xA0</code></td></tr><tr><td>头部 size（未采用）</td><td><code>0xE370CDAAE370C437</code></td></tr><tr><td>block[0]</td><td>压缩 <code>2301 / 0x8FD</code>，解压 <code>6116 / 0x17E4</code>，flags <code>5</code></td></tr><tr><td>node 0</td><td><code>CAB-d29c4e95cbb3b4d25d7f11ebc90d49ca</code>，offset <code>0</code>，size <code>6100</code>，flags <code>4</code></td></tr><tr><td>node 1</td><td><code>CAB-d29c4e95cbb3b4d25d7f11ebc90d49ca.resS</code>，offset <code>6100</code>，size <code>16</code>，flags <code>0</code></td></tr><tr><td>原始样本 SHA-256</td><td><code>6415598d07bf26090f3ae631d4746f19cb4608c33fce39b93a89fa24903dfcff</code></td></tr><tr><td>重封装产物 SHA-256</td><td><code>858c6bd23289be88b88c9e1f98af7d63958241669372d0fd307219fdd11dbc96</code></td></tr></tbody></table> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-u3wiumwa> <div class="nav-cell" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/44-endfield-vfs-index-and-file-decryption/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa> <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8592;</span> 上一篇
+</span> <span class="nav-title" data-astro-cid-u3wiumwa>终末地 VFS 的索引与文件解密</span> </a> </div> <div class="nav-cell next" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/46-endfield-sparse-vfsaes-and-parameters/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa>
+下一篇 <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8594;</span> </span> <span class="nav-title" data-astro-cid-u3wiumwa>终末地 VFSAES 的稀疏变换与参数</span> </a> </div> </nav> </div> </div>   <footer class="micro"> <a class="back" href="/blog/minimalist/"> <span class="arrow" aria-hidden="true">&#8592;</span> 返回技术索引 </a> <span class="copy">&copy; 2026 Shrei</span> <span class="colophon">Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div>  </body></html>

@@ -1,0 +1,144 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>终末地 VFS 的索引与文件解密 · Shrei</title><meta name="description" content="一个看起来像加密入口的 Base64 文件把分析带偏了一段。改为沿 GameAssembly 的真实调用链找到 .blc 索引后，key 来自逐字节减法，nonce 与 counter 来自文件头和构造参数，CRC 与 MD5 再把每一步接回客户端自己保存的结果。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/44-endfield-vfs-index-and-file-decryption/"><meta property="og:title" content="终末地 VFS 的索引与文件解密 · Shrei"><meta property="og:description" content="一个看起来像加密入口的 Base64 文件把分析带偏了一段。改为沿 GameAssembly 的真实调用链找到 .blc 索引后，key 来自逐字节减法，nonce 与 counter 来自文件头和构造参数，CRC 与 MD5 再把每一步接回客户端自己保存的结果。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/44-endfield-vfs-index-and-file-decryption/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><script>(function(){const dayStartHour = 6;
+const nightStartHour = 18;
+
+    (function ()
+    {
+        let stored = null;
+        try
+        {
+            stored = localStorage.getItem('shrei-theme');
+        }
+        catch (_)
+        {
+            /* 隐私模式下不可用，按本地时间自动选择 */
+        }
+
+        const isNight = () =>
+        {
+            const hour = new Date().getHours();
+            return hour < dayStartHour || hour >= nightStartHour;
+        };
+
+        const themeColor = document.querySelector('[data-theme-color]');
+        const apply = () =>
+        {
+            const dark = stored === 'dark' || (stored !== 'light' && isNight());
+            document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
+            if (themeColor)
+            {
+                themeColor.content = dark ? '#151412' : '#f4f2ec';
+            }
+        };
+
+        apply();
+
+        if (stored !== 'light' && stored !== 'dark')
+        {
+            const schedule = () =>
+            {
+                const now = new Date();
+                const next = new Date(now);
+                if (now.getHours() < dayStartHour)
+                {
+                    next.setHours(dayStartHour, 0, 0, 0);
+                }
+                else if (now.getHours() < nightStartHour)
+                {
+                    next.setHours(nightStartHour, 0, 0, 0);
+                }
+                else
+                {
+                    next.setDate(next.getDate() + 1);
+                    next.setHours(dayStartHour, 0, 0, 0);
+                }
+
+                window.setTimeout(() =>
+                {
+                    apply();
+                    schedule();
+                }, Math.max(1000, next.getTime() - now.getTime()));
+            };
+
+            schedule();
+        }
+    })();
+})();</script><link rel="stylesheet" href="/blog/astro/_slug_.1l8rUkZ0.css"><style>.frame>.topbar{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.frame>.topbar>.brand{justify-self:start;transition:color .14s ease}.frame>.topbar>.brand:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.frame>.topbar>.brand:hover{color:var(--red)}.frame>.topbar>.center{min-width:0;text-align:center}.frame>.topbar>.to-home{justify-self:end;transition:color .14s ease}.frame>.topbar>.to-home .arrow{display:inline-block;transition:transform .14s ease}.frame>.topbar>.to-home:hover{color:var(--red)}.frame>.topbar>.to-home:hover .arrow{transform:translate(.25em)}.frame>footer{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}.frame>footer .back{transition:color .14s ease}.frame>footer .back .arrow{display:inline-block;transition:transform .14s ease}.frame>footer .back:hover{color:var(--red)}.frame>footer .back:hover .arrow{transform:translate(-.25em)}.frame>footer .colophon{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.frame>.topbar{grid-template-columns:1fr auto}.frame>.topbar>.center{display:none}.frame>footer{grid-template-columns:1fr;gap:.4rem}.frame>footer .colophon{justify-self:start}}@media print{.frame>.topbar>.to-home,.frame>footer{display:none}}:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}
+</style><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"></head> <body> <div class="frame"> <div class="topbar micro"> <a class="brand" href="/blog/minimalist/">Shrei — Technical Index</a> <div class="center"><span class="topbar-category" data-astro-cid-wy3xnbws>Unity 逆向</span></div> <a class="to-home" href="/blog/">
+博客主站 <span class="arrow" aria-hidden="true">&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-ldbnljcb> <p class="category micro" data-astro-cid-ldbnljcb>Unity 逆向</p> <h1 data-astro-cid-ldbnljcb> 终末地 VFS 的索引与文件解密  </h1> <div class="meta micro" data-astro-cid-ldbnljcb> <time datetime="2026-08-19" data-astro-cid-ldbnljcb>2026-08-19</time> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>7 min</span> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>1,738 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span class="tags" data-astro-cid-ldbnljcb>Reverse Engineering / Unity / IL2CPP / ChaCha20 / AssetBundle</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#先问程序读什么" data-astro-cid-wy3xnbws>先问程序读什么</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#key让指令决定是哪种运算" data-astro-cid-wy3xnbws>key：让指令决定是哪种运算</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#nonce-与-counter参数写在协议里" data-astro-cid-wy3xnbws>nonce 与 counter：参数写在协议里</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#解开的索引把文件区间交出来" data-astro-cid-wy3xnbws>解开的索引把文件区间交出来</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#加密文件同一把-key换一个-nonce" data-astro-cid-wy3xnbws>加密文件：同一把 key，换一个 nonce</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#速查" data-astro-cid-wy3xnbws>速查</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#文件交付之后" data-astro-cid-wy3xnbws>文件交付之后</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+</a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <p>资源目录里有一个 Base64 文件，看起来很像索引，很容易让人以为加密入口就在这里。拿它去试 key、换 counter，怎么调都对不上，因为终末地的 VFS 读取根本不从这个文件开始：调用链先算出一个哈希路径，再去读那里的 <code>.blc</code>。</p>
+<p>这是外层分析的第一处转折，也定下了后面的做法：文件看起来像什么不重要，程序实际从哪里读、读完交给谁，才决定该解哪份数据。<a href="/blog/posts/27-endfield-vfs-two-layer-analysis/">总览</a>把保护分成两层，外层负责把文件字节交出来，这一篇只走这一层。文中 RVA 均对应初次资源分析所用的 Windows x64 GameAssembly.dll。</p>
+<h2 id="先问程序读什么">先问程序读什么<a class="anchor" href="#先问程序读什么"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>IL2CPP 元数据保留了类型和方法名，入口并不难找。<code>CreateFromStreamAssetFile</code>（<code>0x30762C0</code>）打开 StreamingAssets 里的索引，往下的顺序是：</p>
+<div class="expressive-code"><link rel="stylesheet" href="/blog/astro/ec.iz9dg.css"><script type="module" src="/blog/astro/ec.0vx5m.js"></script><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">CreateFromStreamAssetFile</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">→ GetVFSBlockHashPath</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">→ ReadStreamAssetFileAllBytes</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">→ DecryptCreateBlockGroupInfo</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">→ XXE1 → VFBlockMainInfo.ReadFromByteBuf</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="CreateFromStreamAssetFile  → GetVFSBlockHashPath  → ReadStreamAssetFileAllBytes  → DecryptCreateBlockGroupInfo  → XXE1 → VFBlockMainInfo.ReadFromByteBuf"><div></div></button></div></figure></div>
+<p><code>GetVFSBlockHashPath</code> 这一步说明了前面为什么一直对不上：真实输入是哈希路径下的 <code>.blc</code>，而 <code>index_main.json</code> 属于另一条清单链。输入选错了，在它上面调 key 或 counter 只会制造更多无效组合。</p>
+<p>解密由 <code>XXE1</code> 完成。类名经过混淆，看不出用途，成员却暴露得很彻底：32 字节 key、12 字节 nonce、16 个 <code>uint32</code> 状态、sigma/tau 常量、64 字节工作块，以及一个 QuarterRound。再对一下轮结构，就能认定这是 ChaCha20。算法确定之后，剩下的问题只有三个参数从哪里来。</p>
+<h2 id="key让指令决定是哪种运算">key：让指令决定是哪种运算<a class="anchor" href="#key让指令决定是哪种运算"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>公共 key 由 <code>GetCommonChachaKeyBs</code> 生成。它拼出一段 Base64，解码后和一个解锁串一起送进 <code>Beyond.Security.IOOO000iiI</code> 做字节变换：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">Base64: Ks6k3zhrV5gCnBfZVqAgLqzl3BC/08Dagi4BZzU9xUY=</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">unlock: Assets/Beyond/DynamicAssets/</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="Base64: Ks6k3zhrV5gCnBfZVqAgLqzl3BC/08Dagi4BZzU9xUY=unlock: Assets/Beyond/DynamicAssets/"><div></div></button></div></figure></div>
+<p>这种“密文加一段字符串”的结构，最容易让人凭经验猜成异或。加、减、异或都像简单混淆，得出的 key 却完全不同，所以这里不猜，直接看内层 <code>_IIiiIIIoO</code>（<code>0x2F800B0</code>）的循环：两边各取一个无符号字节，执行 <code>sub</code>，写回低八位。</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">output[index] = (cipher[index] - key[index % keyLength]) mod 256</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code">
+</div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">公共 key:</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">E95B317AC4F828569D23A86BF271DCB53E846FA75C924D671DBA8E38F4CA52E1</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="output[index] = (cipher[index] - key[index % keyLength]) mod 256公共 key:E95B317AC4F828569D23A86BF271DCB53E846FA75C924D671DBA8E38F4CA52E1"><div></div></button></div></figure></div>
+<p>指令只能说明程序这么算，这组 key 对不对，还要等索引自己来验。</p>
+<h2 id="nonce-与-counter参数写在协议里">nonce 与 counter：参数写在协议里<a class="anchor" href="#nonce-与-counter参数写在协议里"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p><code>.blc</code> 的前 12 字节按小端读作 <code>uint32 protocol = 3</code> 加 <code>uint64 seed</code>，这 12 字节就是 nonce，ChaCha20 处理的载荷从偏移 12 开始，载荷末尾则是解密后索引内容的 CRC32。nonce 和校验值都放在文件里，不需要从别处推。</p>
+<p>初始 counter 也不必猜。<code>DecryptCreateBlockGroupInfo</code> 在 <code>0x3076C52</code> 执行 <code>mov r9d, 1</code>，紧接着在 <code>0x3076C62</code> 调用 <code>XXE1</code> 的构造函数。这个 1 应该和 protocol 一样当作协议的一部分记下来。</p>
+<p>有了索引自带的 CRC，就可以把相近的假设一次排除干净。在 <code>0CE8FA57.blc</code> 上，我把四种 key 处理（Base64 原始字节、逐字节加、异或、减 unlock）和 counter 0、1、2 两两组合，12 种里只有“减法 + counter 1”通过，正好是指令给出的那一组。它解析出组名 <code>InitBundle</code>，存储 CRC 与计算 CRC 都是 <code>2FD48B5F</code>。为排除自写实现本身的错误，又用 PyCryptodome 跑了同一组输入，密钥流逐字节相同。</p>
+<p>这一步的价值在于预期值来自客户端，不是分析者自己定的。指令给出候选，客户端保存的 CRC 做裁判，两边从不同方向指向同一组参数。</p>
+<h2 id="解开的索引把文件区间交出来">解开的索引把文件区间交出来<a class="anchor" href="#解开的索引把文件区间交出来"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>索引按固定顺序排列：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">codeVersion / version</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">groupName / groupHash</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">declaredFileCount</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">groupChunksLength / blockType / chunkCount</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">chunks[] / files[]</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">optional buildTime / buildNote</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">CRC32</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="codeVersion / versiongroupName / groupHashdeclaredFileCountgroupChunksLength / blockType / chunkCountchunks[] / files[]optional buildTime / buildNoteCRC32"><div></div></button></div></figure></div>
+<p>这里有个容易写错的地方：本批索引的 <code>codeVersion=4</code> 和 <code>version=22097503</code> 是两个并列字段，前者决定格式怎么解析，不能合并成一句“版本 4”。</p>
+<p>用同一套参数处理 17 个 StreamingAssets 索引，全部通过 CRC，声明的文件数与实际记录数一致，尾部也恰好消费完。最大的 <code>Bundle</code> 组有 236,746 个文件。每条文件记录的 offset 与 length 指向 <code>.chk</code> 里的一段区间，<code>encrypted</code> 决定这段字节要不要再解一次。</p>
+<h2 id="加密文件同一把-key换一个-nonce">加密文件：同一把 key，换一个 nonce<a class="anchor" href="#加密文件同一把-key换一个-nonce"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p><code>encrypted=true</code> 的记录带有自己的 <code>ivSeed</code>。文件级解密沿用公共 key 和 counter 1，只把 nonce 换成这条记录的：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">nonce = little_endian(uint32 3, uint64 ivSeed)</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">文件输出 = ChaCha20(commonKey, nonce, counter=1) XOR 区间字节</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="nonce = little_endian(uint32 3, uint64 ivSeed)文件输出 = ChaCha20(commonKey, nonce, counter=1) XOR 区间字节"><div></div></button></div></figure></div>
+<p>以 <code>BundleManifest</code> 组的 <code>manifest.hgmmap</code> 为例：它登记在 <code>1CDDBF1F.blc</code>，长度 46,497,641 字节，<code>ivSeed=285540354</code> 构造出 nonce <code>030000000200051100000000</code>。解密输出的 MD5 为 <code>F38E756A02A85B3EDDC7711B4C9AF654</code>，和记录一致；再用 Brotli 展开，得到 137,816,398 字节。</p>
+<p>索引用 CRC 核对，文件用 MD5 核对，Brotli 能完整展开说明内容已经可以进入下一步格式处理。三道检查沿客户端自己的处理顺序依次接力，任何一个参数错了都会在最近的那一道停下。</p>
+<h2 id="速查">速查<a class="anchor" href="#速查"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>项目</th><th>值</th></tr></thead><tbody><tr><td><code>CreateFromStreamAssetFile</code></td><td><code>0x30762C0</code>，打开索引</td></tr><tr><td><code>DecryptCreateBlockGroupInfo</code></td><td><code>0x30769C0</code>，解密并解析组信息；<code>0x3076C52</code> 设 counter=1</td></tr><tr><td><code>GetAssetBytes</code></td><td><code>0x2F23370</code>，按文件记录读取、可选解密</td></tr><tr><td><code>GetCommonChachaKeyBs</code> / <code>_IIiiIIIoO</code></td><td><code>0x2F7D740</code> / <code>0x2F800B0</code>，生成公共 key</td></tr><tr><td><code>XXE1::.ctor</code></td><td><code>0x2F225D0</code>，接收 key、nonce、counter</td></tr><tr><td><code>XXE1::WorkBytes</code> / <code>QuarterRound</code></td><td><code>0x2EFF3D0</code> / <code>0x2EFF4E0</code></td></tr><tr><td>各组文件数</td><td>Bundle 236,746；Terrain 65,258；Streaming 51,095；JsonData 89,959；InitBundle 1,048</td></tr><tr><td><code>0CE8FA57.blc</code> 解密结果 SHA-256</td><td><code>a788fbd3ded1a5ec1ca90f44edb9e44b742481fe0e6a36618d96052dd1fc4fe8</code>（分析者计算，仅标识产物）</td></tr></tbody></table>
+<h2 id="文件交付之后">文件交付之后<a class="anchor" href="#文件交付之后"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>回头看，这一层能顺利收束，靠的是三个可以搬到别的目标上的习惯。输入以调用链为准，不以文件长相为准，开头那个 Base64 文件就是反例。参数能从指令里读出来的就别枚举，<code>sub</code> 和 <code>mov r9d, 1</code> 各自省掉了一整片猜测空间。验证要用程序自己保存的校验值，CRC 和 MD5 是客户端写下的预期，比任何“看起来解对了”都可靠。</p>
+<p>但文件层结束不等于资源可读。<code>encrypted=false</code> 的记录由外层原样交出，<code>InitBundle</code> 最小包的 MD5 也能对上，里面却仍是定制 Bundle。<a href="/blog/posts/45-endfield-bundle-layout-and-compression/">下一篇</a>从这个小包的头和目录出发，说明它怎样变成标准 Unity 对象。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-u3wiumwa> <div class="nav-cell" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/27-endfield-vfs-two-layer-analysis/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa> <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8592;</span> 上一篇
+</span> <span class="nav-title" data-astro-cid-u3wiumwa>终末地资源的两层保护：从 VFS 校验到归档恢复</span> </a> </div> <div class="nav-cell next" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/45-endfield-bundle-layout-and-compression/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa>
+下一篇 <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8594;</span> </span> <span class="nav-title" data-astro-cid-u3wiumwa>终末地定制 Bundle 的目录与压缩</span> </a> </div> </nav> </div> </div>   <footer class="micro"> <a class="back" href="/blog/minimalist/"> <span class="arrow" aria-hidden="true">&#8592;</span> 返回技术索引 </a> <span class="copy">&copy; 2026 Shrei</span> <span class="colophon">Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div>  </body></html>

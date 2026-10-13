@@ -1,0 +1,155 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="Astro v6.4.8"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#f4f2ec" data-theme-color><title>终末地启动壳的指令生成与虚尾填充 · Shrei</title><meta name="description" content="UnityPlayer 里有些调用落进段末的空白虚尾，后面紧跟填充字节，静态读不下去。沿 DLL 初始化、记录消费与一次受保护调用，看被搬走的指令由谁、在何时写回，又怎样离线折叠进文件。"><meta name="author" content="Shrei"><link rel="canonical" href="https://zushinzackery2-ship-it.github.io/blog/minimalist/47-endfield-startup-instruction-emission/"><meta property="og:title" content="终末地启动壳的指令生成与虚尾填充 · Shrei"><meta property="og:description" content="UnityPlayer 里有些调用落进段末的空白虚尾，后面紧跟填充字节，静态读不下去。沿 DLL 初始化、记录消费与一次受保护调用，看被搬走的指令由谁、在何时写回，又怎样离线折叠进文件。"><meta property="og:type" content="article"><meta property="og:url" content="https://zushinzackery2-ship-it.github.io/blog/minimalist/47-endfield-startup-instruction-emission/"><meta property="og:site_name" content="Shrei"><link rel="icon" href="/blog/favicon/favicon.ico"><script>(function(){const dayStartHour = 6;
+const nightStartHour = 18;
+
+    (function ()
+    {
+        let stored = null;
+        try
+        {
+            stored = localStorage.getItem('shrei-theme');
+        }
+        catch (_)
+        {
+            /* 隐私模式下不可用，按本地时间自动选择 */
+        }
+
+        const isNight = () =>
+        {
+            const hour = new Date().getHours();
+            return hour < dayStartHour || hour >= nightStartHour;
+        };
+
+        const themeColor = document.querySelector('[data-theme-color]');
+        const apply = () =>
+        {
+            const dark = stored === 'dark' || (stored !== 'light' && isNight());
+            document.documentElement.dataset.theme = dark ? 'github-dark' : 'github-light';
+            if (themeColor)
+            {
+                themeColor.content = dark ? '#151412' : '#f4f2ec';
+            }
+        };
+
+        apply();
+
+        if (stored !== 'light' && stored !== 'dark')
+        {
+            const schedule = () =>
+            {
+                const now = new Date();
+                const next = new Date(now);
+                if (now.getHours() < dayStartHour)
+                {
+                    next.setHours(dayStartHour, 0, 0, 0);
+                }
+                else if (now.getHours() < nightStartHour)
+                {
+                    next.setHours(nightStartHour, 0, 0, 0);
+                }
+                else
+                {
+                    next.setDate(next.getDate() + 1);
+                    next.setHours(dayStartHour, 0, 0, 0);
+                }
+
+                window.setTimeout(() =>
+                {
+                    apply();
+                    schedule();
+                }, Math.max(1000, next.getTime() - now.getTime()));
+            };
+
+            schedule();
+        }
+    })();
+})();</script><link rel="stylesheet" href="/blog/astro/_slug_.1l8rUkZ0.css"><style>.frame>.topbar{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;padding:1.15rem 0;border-bottom:1px solid var(--hair)}.frame>.topbar>.brand{justify-self:start;transition:color .14s ease}.frame>.topbar>.brand:before{content:"";display:inline-block;width:.62em;height:.62em;background:var(--red);margin-right:.9em;transform:translateY(.02em)}.frame>.topbar>.brand:hover{color:var(--red)}.frame>.topbar>.center{min-width:0;text-align:center}.frame>.topbar>.to-home{justify-self:end;transition:color .14s ease}.frame>.topbar>.to-home .arrow{display:inline-block;transition:transform .14s ease}.frame>.topbar>.to-home:hover{color:var(--red)}.frame>.topbar>.to-home:hover .arrow{transform:translate(.25em)}.frame>footer{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;gap:1.5rem;margin-top:clamp(4rem,8vw,5.5rem);border-top:2px solid var(--ink);padding:1.3rem 0 3.25rem}.frame>footer .back{transition:color .14s ease}.frame>footer .back .arrow{display:inline-block;transition:transform .14s ease}.frame>footer .back:hover{color:var(--red)}.frame>footer .back:hover .arrow{transform:translate(-.25em)}.frame>footer .colophon{justify-self:end;color:var(--ink-3)}@media(max-width:720px){.frame>.topbar{grid-template-columns:1fr auto}.frame>.topbar>.center{display:none}.frame>footer{grid-template-columns:1fr;gap:.4rem}.frame>footer .colophon{justify-self:start}}@media print{.frame>.topbar>.to-home,.frame>footer{display:none}}:root{color-scheme:light dark;--paper: light-dark(#f4f2ec, #151412);--ink: light-dark(#1a1815, #e9e6dd);--ink-2: light-dark(#5c574d, #a6a094);--ink-3: light-dark(#8e887a, #6e6a5f);--red: light-dark(#e02d1b, #ff4b38);--hair: light-dark(rgb(26 24 21 / .16), rgb(233 230 221 / .17));--font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}:root[data-theme=github-light]{color-scheme:light}:root[data-theme=github-dark]{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}html{background:var(--paper);-webkit-text-size-adjust:100%}body{font-family:var(--font-sans);font-size:16px;line-height:1.7;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}::selection{background:var(--red);color:var(--paper)}a{color:inherit;text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.frame{max-width:76rem;margin:0 auto;padding:0 clamp(1.25rem,4vw,3rem)}.micro{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}@media print{:root,:root[data-theme=github-dark]{color-scheme:light}body{font-size:12px}.frame{max-width:none;padding:0}}
+</style><link rel="stylesheet" href="/blog/astro/katex.cfve-qk9.css"></head> <body> <div class="frame"> <div class="topbar micro"> <a class="brand" href="/blog/minimalist/">Shrei — Technical Index</a> <div class="center"><span class="topbar-category" data-astro-cid-wy3xnbws>Unity 逆向</span></div> <a class="to-home" href="/blog/">
+博客主站 <span class="arrow" aria-hidden="true">&#8594;</span> </a> </div>   <header class="masthead" data-astro-cid-ldbnljcb> <p class="category micro" data-astro-cid-ldbnljcb>Unity 逆向</p> <h1 data-astro-cid-ldbnljcb> 终末地启动壳的指令生成与虚尾填充  </h1> <div class="meta micro" data-astro-cid-ldbnljcb> <time datetime="2026-08-19" data-astro-cid-ldbnljcb>2026-08-19</time> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>13 min</span> <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span data-astro-cid-ldbnljcb>2,833 字</span>  <span class="sep" aria-hidden="true" data-astro-cid-ldbnljcb></span> <span class="tags" data-astro-cid-ldbnljcb>Reverse Engineering / Unity / IL2CPP / Anti-Analysis</span>  </div> </header> <div class="reader" data-astro-cid-wy3xnbws> <aside class="rail" data-astro-cid-wy3xnbws> <nav class="toc" aria-label="目录" data-astro-cid-wy3xnbws> <p class="toc-label micro" data-astro-cid-wy3xnbws>目录 / Contents</p> <ol data-astro-cid-wy3xnbws> <li class="lv2" data-astro-cid-wy3xnbws> <a href="#调用目标是加载器给的一片零" data-astro-cid-wy3xnbws>调用目标是加载器给的一片零</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#一条岔路可执行段并不全是代码" data-astro-cid-wy3xnbws>一条岔路：可执行段并不全是代码</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#写入发生在-exe-入口之前" data-astro-cid-wy3xnbws>写入发生在 EXE 入口之前</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#每条记录同时描述入口body-与续体" data-astro-cid-wy3xnbws>每条记录同时描述入口、body 与续体</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#消费循环把一条记录展开到两处" data-astro-cid-wy3xnbws>消费循环把一条记录展开到两处</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#一次调用怎样跨过填充字节" data-astro-cid-wy3xnbws>一次调用怎样跨过填充字节</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#离线把执行链折叠回文件" data-astro-cid-wy3xnbws>离线把执行链折叠回文件</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#换一个目标也能用的做法" data-astro-cid-wy3xnbws>换一个目标也能用的做法</a> </li><li class="lv2" data-astro-cid-wy3xnbws> <a href="#样本" data-astro-cid-wy3xnbws>样本</a> </li> </ol> </nav> <a class="rail-back micro" href="/blog/minimalist/" data-astro-cid-wy3xnbws> <span aria-hidden="true" data-astro-cid-wy3xnbws>&#8592;</span> 技术索引
+</a> </aside> <div class="reader-body" data-astro-cid-wy3xnbws> <article class="reader-prose" data-astro-cid-wy3xnbws> <p>磁盘上的 UnityPlayer 有一些函数读到一半就断了：一条 <code>call</code> 指向段末一片全零的区域，<code>call</code> 后面又是一串填充字节。按静态反汇编的习惯，既不知道调用去了哪里，也不知道它回来后该执行什么。</p>
+<p>程序运行起来却一切正常。原因是这段代码在磁盘上本来就不完整：<strong>被搬走的指令在启动时写进新分配的代码页，空白虚尾则被填上跳转入口和指针。</strong> 两者由同一个生产循环写出，外置指令执行完，再跳回原函数的续体。</p>
+<p>这正是<a href="/blog/posts/27-endfield-vfs-two-layer-analysis/">资源总览</a>里归档入口附近反汇编读不通的原因。下面沿着四个问题走一遍：静态读取为什么看不见，谁在什么时候写入，一次受保护调用怎样执行，以及怎样把这条链离线折叠回文件。</p>
+<h2 id="调用目标是加载器给的一片零">调用目标是加载器给的一片零<a class="anchor" href="#调用目标是加载器给的一片零"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>先看那片空白从哪来。PE 节有两个大小：文件里实际存了多少字节，映射到内存后占多大空间。原构建的 <code>.tvm0</code> 从 RVA <code>0x23C6000</code> 开始，VirtualSize 为 <code>0x17FFEA</code>，SizeOfRawData 只有 <code>0x17B000</code>：</p>
+<div class="expressive-code"><link rel="stylesheet" href="/blog/astro/ec.iz9dg.css"><script type="module" src="/blog/astro/ec.0vx5m.js"></script><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">文件数据结束：RVA 0x2541000</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">虚拟空间结束：RVA 0x2545FEA</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">虚尾范围：    [0x2541000, 0x2545FEA)，20458 字节</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="文件数据结束：RVA 0x2541000虚拟空间结束：RVA 0x2545FEA虚尾范围：    [0x2541000, 0x2545FEA)，20458 字节"><div></div></button></div></figure></div>
+<p>Windows 映射 DLL 时，多出来的这段虚拟空间一律填零。磁盘上找得到调用目标的地址，却找不到那里的内容，因为内容要等运行时才写进去。看到调用落在 VirtualSize 超出 RawSize 的部分，就可以确定有一个启动期的写手。</p>
+<p>调用点本身的形状也说明了这一点。12 个原函数入口通过短跳转进入 <code>.tvm0</code> 的本机代码区，其中部分指令序列被外置，原位留下等长替换：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">原始 N 字节指令序列</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">→ 5 字节 call &#x3C;虚尾槽></span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">→ N−5 字节填充</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">下一条原指令的位置保持不变</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="原始 N 字节指令序列  → 5 字节 call <虚尾槽>  → N−5 字节填充下一条原指令的位置保持不变"><div></div></button></div></figure></div>
+<p>长度不变，下一条原指令的位置也就不变；代价是 <code>call+5</code> 落在填充上，不再是真正的后继。原构建有 312 个这样的调用点，每段被搬走的 body 长 6..34 字节，可能包含多条指令，只有 68 段恰好是一条。如果按 body 长度去猜“这里少了一条什么指令”，大多数情况都会猜错。</p>
+<h2 id="一条岔路可执行段并不全是代码">一条岔路：可执行段并不全是代码<a class="anchor" href="#一条岔路可执行段并不全是代码"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>找写手之前，扫描 <code>.tvm0</code> 时冒出过一个看似相关的候选：RVA <code>0x24445B4</code> 的 <code>28 25 FB 01 10 00</code>，解码出来是一条操作数指向虚尾的 <code>sub</code>。如果把它当成线索，就会去分析一条根本不会执行的指令。</p>
+<p>问题在于 <code>.tvm0</code> 里还放着 Windows 的异常展开表。段属性可执行，不代表整段文件数据都是指令。沿 PE 异常目录对照，这六个字节是两个地址字段拼起来的：前四字节是某条记录的展开信息 RVA <code>0x1FB2528</code>，后两字节属于下一条记录的函数起始 RVA <code>0x5F0010</code>。前一条记录描述的代码在 <code>.text+0x5F0000</code>，只是一字节 <code>ret</code>。</p>
+<p>排除它只需要读一次目录。更省事的做法，是在可执行段里扫描“引用虚尾的指令”之前，先把异常表这类已知数据区标出来。真正的写手要从启动时的记录消费循环去找。</p>
+<h2 id="写入发生在-exe-入口之前">写入发生在 EXE 入口之前<a class="anchor" href="#写入发生在-exe-入口之前"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>写手藏在 EndfieldBase 里，时机由加载顺序决定。Endfield.exe 的初始导入是 EndfieldBase ordinal 1，所以 Windows 先加载这个依赖、执行它的进程附加入口，然后才进入 EXE 入口。</p>
+<p>EndfieldBase 的 DLL 入口 <code>+0x21F260</code> 跳到 <code>.tvm0</code> 中的 <code>+0x1444255</code>，沿 VM 执行路径生成一张私有 RW 记录表。DllMain 返回后，EXE 在 <code>+0xA9F0F</code> 调用 ordinal 1，后者从 <code>+0x23BDE0</code> 跳到 <code>+0x162B131</code>，进入后续引导与记录消费路径。生产循环还依赖 UnityPlayer 已经映射，否则虚尾地址无处可写。三条前提汇到一处：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">EndfieldBase DllMain → RW 记录表 ───────────┐</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">EXE 调用 ordinal 1 → 后续生产帧 ──────────┤</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">UnityPlayer 映射 → 虚尾初始填零 ──────────┘</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">                                          </span></span><span style="--0:#e1e4e8;--1:#24292e">↓</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">                                  </span></span><span style="--0:#e1e4e8;--1:#24292e">逐条生成指令与跳转</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="EndfieldBase DllMain → RW 记录表 ───────────┐EXE 调用 ordinal 1 → 后续生产帧 ──────────┤UnityPlayer 映射 → 虚尾初始填零 ──────────┘                                          ↓                                  逐条生成指令与跳转"><div></div></button></div></figure></div>
+<p>这里有一个容易走偏的地方：记录表是执行的产物。从磁盘字节码某处截取同样长度的数据，得不到它。想离线拿到这张表，就得把 DllMain 跑一遍。</p>
+<h2 id="每条记录同时描述入口body-与续体">每条记录同时描述入口、body 与续体<a class="anchor" href="#每条记录同时描述入口body-与续体"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>原构建的表有 789 条记录，记录区占 20124 字节。每条是十六字节头加变长 body：</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>记录偏移</th><th>内容</th></tr></thead><tbody><tr><td><code>0 / 2</code></td><td>16 位虚尾槽 key / 常量 <code>0xE8E6</code></td></tr><tr><td><code>4 / 6</code></td><td>每条记录唯一的 16 位值 / 常量 <code>0x7A8D</code></td></tr><tr><td><code>8</code></td><td>continuation 编码，高 16 位为空间 tag</td></tr><tr><td><code>12 / 13</code></td><td>body 长度码 / 三字节锚点 <code>0x55E84E</code></td></tr><tr><td><code>16</code></td><td>外置的 x64 指令字节</td></tr></tbody></table>
+<p>一条真实记录回答三个问题：哪个槽接住调用，执行哪些字节，从哪里回到原函数。</p>
+<p>麻烦在于槽位置和续体低位都用了带 bias 与噪声子集和的加性编码，单看一个字段会得到多个候选。把记录接到调用点上要靠交叉约束：槽候选与磁盘 <code>call</code> 目标求交，再检查 <code>continuation = call_site + body长度</code>。两个条件同时成立时，匹配是唯一的。</p>
+<p>789 条里只有 312 条对应真实调用点，其余 477 条的续体 RVA 为 0。生产循环照样为它们生成片段，但已验证的真实调用点没有指向这些槽。RVA 0 是 UnityPlayer 映像基址，所以它们在运行时的绝对指针不是空值，看起来和真记录一样“有效”。</p>
+<h2 id="消费循环把一条记录展开到两处">消费循环把一条记录展开到两处<a class="anchor" href="#消费循环把一条记录展开到两处"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>生产帧拿到表基址、长度和记录区末尾后逐条推进。它用 <code>NtAllocateVirtualMemory</code> 分配 4 KiB RWX 页，把生成片段连续放进去，放不下就换页，原构建一共用了六页。</p>
+<p>处理每条记录时，<code>RBX</code> 指向当前代码页里的片段起点，<code>R15</code> 指向 Unity 虚尾入口，<code>R13</code> 指向入口对应的八字节指针槽。循环先写虚尾：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="asm"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#99A0A6;--1:#616972">; EndfieldBase RVA</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">+</span><span style="--0:#79B8FF;--1:#005CC5">0x114C8F3</span><span style="--0:#E1E4E8;--1:#24292E">  </span><span style="--0:#F97583;--1:#BF3441">mov</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">word</span><span style="--0:#E1E4E8;--1:#24292E"> ptr [</span><span style="--0:#79B8FF;--1:#005CC5">r15</span><span style="--0:#E1E4E8;--1:#24292E">], </span><span style="--0:#79B8FF;--1:#005CC5">0x25ff</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">+</span><span style="--0:#79B8FF;--1:#005CC5">0x114C91D</span><span style="--0:#E1E4E8;--1:#24292E">  </span><span style="--0:#F97583;--1:#BF3441">mov</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">dword</span><span style="--0:#E1E4E8;--1:#24292E"> ptr [</span><span style="--0:#79B8FF;--1:#005CC5">r15</span><span style="--0:#E1E4E8;--1:#24292E">+</span><span style="--0:#79B8FF;--1:#005CC5">2</span><span style="--0:#E1E4E8;--1:#24292E">], </span><span style="--0:#79B8FF;--1:#005CC5">eax</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">+</span><span style="--0:#79B8FF;--1:#005CC5">0x114C921</span><span style="--0:#E1E4E8;--1:#24292E">  </span><span style="--0:#F97583;--1:#BF3441">mov</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">qword</span><span style="--0:#E1E4E8;--1:#24292E"> ptr [</span><span style="--0:#79B8FF;--1:#005CC5">r13</span><span style="--0:#E1E4E8;--1:#24292E">], </span><span style="--0:#79B8FF;--1:#005CC5">rbx</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="; EndfieldBase RVA+0x114C8F3  mov word ptr [r15], 0x25ff+0x114C91D  mov dword ptr [r15+2], eax+0x114C921  mov qword ptr [r13], rbx"><div></div></button></div></figure></div>
+<p>第一条按小端写出 <code>FF 25</code>，第二条写入 RIP 相对位移 <code>disp32 = 指针槽地址 − 虚尾入口地址 − 6</code>，第三条把片段地址放进指针槽。原来全零的入口就成了 <code>jmp qword ptr [rip+disp32]</code>。</p>
+<p>然后写代码页。<code>+0x114C925</code> 与 <code>+0x114C92B</code> 组合写入五字节 <code>lea rsp,[rsp+8]</code>，<code>+0x4CE629</code> 起的复制辅助代码把 <code>record+16</code> 的 body 复制到 <code>RBX+5</code>，最后补一条间接跳转和八字节续体指针：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="asm"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#F97583;--1:#BF3441">lea</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">rsp</span><span style="--0:#E1E4E8;--1:#24292E">, [</span><span style="--0:#79B8FF;--1:#005CC5">rsp</span><span style="--0:#E1E4E8;--1:#24292E">+</span><span style="--0:#79B8FF;--1:#005CC5">8</span><span style="--0:#E1E4E8;--1:#24292E">]</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">&#x3C;record body></span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span style="--0:#F97583;--1:#BF3441">jmp</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#F97583;--1:#BF3441">qword</span><span style="--0:#E1E4E8;--1:#24292E"> ptr [</span><span style="--0:#79B8FF;--1:#005CC5">rip</span><span style="--0:#E1E4E8;--1:#24292E">]   </span><span style="--0:#99A0A6;--1:#616972">; FF 25 00 00 00 00</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span style="--0:#E1E4E8;--1:#24292E">&#x3C;</span><span style="--0:#79B8FF;--1:#005CC5">8</span><span style="--0:#E1E4E8;--1:#24292E"> 字节 continuation VA></span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="lea rsp, [rsp+8]<record body>jmp qword ptr [rip]   ; FF 25 00 00 00 00<8 字节 continuation VA>"><div></div></button></div></figure></div>
+<p>每个片段 <code>body长度 + 19</code> 字节。虚尾入口、片段和续体在同一次迭代里接好，整张表处理完，受保护调用才开始被执行。</p>
+<h2 id="一次调用怎样跨过填充字节">一次调用怎样跨过填充字节<a class="anchor" href="#一次调用怎样跨过填充字节"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>用一个具体调用点把上面的结构串起来。原构建 <code>UnityPlayer+0x23C6053</code> 外置了一条七字节指令：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="asm"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#F97583;--1:#BF3441">lea</span><span style="--0:#E1E4E8;--1:#24292E"> </span><span style="--0:#79B8FF;--1:#005CC5">r8</span><span style="--0:#E1E4E8;--1:#24292E">, [</span><span style="--0:#79B8FF;--1:#005CC5">rcx</span><span style="--0:#E1E4E8;--1:#24292E">+</span><span style="--0:#79B8FF;--1:#005CC5">0x122</span><span style="--0:#E1E4E8;--1:#24292E">]</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="lea r8, [rcx+0x122]"><div></div></button></div></figure></div>
+<p>原位是五字节 <code>call</code> 加两字节填充。某次运行中，对应片段位于 VA <code>0x49C0212</code>：</p>
+<div class="expressive-code"><figure class="frame"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">1</div></div><div class="code"><span style="--0:#e1e4e8;--1:#24292e">UnityPlayer+0x23C6053</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">2</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">  </span></span><span style="--0:#e1e4e8;--1:#24292e">call 虚尾 +0x25449B1</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">3</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">    </span></span><span style="--0:#e1e4e8;--1:#24292e">→ FF25 入口读取八字节指针槽</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">4</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">    </span></span><span style="--0:#e1e4e8;--1:#24292e">→ VA 0x49C0212</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">5</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">    </span></span><span style="--0:#e1e4e8;--1:#24292e">→ lea rsp, [rsp+8]</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">6</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">    </span></span><span style="--0:#e1e4e8;--1:#24292e">→ lea r8, [rcx+0x122]</span></div></div><div class="ec-line"><div class="gutter"><div class="ln" aria-hidden="true">7</div></div><div class="code"><span class="indent"><span style="--0:#e1e4e8;--1:#24292e">    </span></span><span style="--0:#e1e4e8;--1:#24292e">→ 跳到 UnityPlayer+0x23C605A</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="UnityPlayer+0x23C6053  call 虚尾 +0x25449B1    → FF25 入口读取八字节指针槽    → VA 0x49C0212    → lea rsp, [rsp+8]    → lea r8, [rcx+0x122]    → 跳到 UnityPlayer+0x23C605A"><div></div></button></div></figure></div>
+<p><code>call</code> 压栈的返回地址是 <code>+0x23C6058</code>，正好落在填充上。片段第一条 <code>lea rsp,[rsp+8]</code> 把它丢掉，栈恢复成调用前的样子；执行完 body 后直接跳到 <code>call_site+7</code>，填充字节被跨过。</p>
+<p>用 <code>lea</code> 调整 RSP 还有一个好处：它不改标志寄存器，body 算出的标志能原样交回原函数。静态阅读时如果把 <code>call+5</code> 当成后继，就会把填充当代码读，后面的控制流全部错位。</p>
+<h2 id="离线把执行链折叠回文件">离线把执行链折叠回文件<a class="anchor" href="#离线把执行链折叠回文件"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>理解了运行时的样子，离线还原就是把这条链压平。离线执行 EndfieldBase DllMain 生成同一构建的记录表，再按上面的编码约束和磁盘调用点匹配 body。原构建得到 312/312，更新构建得到 171/171 个真实调用点。</p>
+<p>最早的结果是 309 个。差的三个不是编码问题，而是入口扫描范围截掉了跨页函数的尾部；扩大到相邻页后，三个调用点和剩下的真实记录一一对上。约束是唯一匹配的，所以“覆盖不满”本身就是扫描有漏的信号。</p>
+<p>重打包保留真实槽的位置，把槽入口改成相对 <code>E9</code> 跳转，片段放进虚尾剩余空间，片段末尾也改成相对跳转回续体。这样得到的文件不再依赖运行时代码页，适合继续离线分析。</p>
+<p>验证时比较的是两份重打包结果：磁盘生成与运行时采集得到的片段，经过同一打包方式后，虚尾与重建 DLL 逐字节一致。原始运行时虚尾不能直接比，它是 <code>FF25</code> 加指向外部页的绝对指针，地址随进程映射变化。</p>
+<h2 id="换一个目标也能用的做法">换一个目标也能用的做法<a class="anchor" href="#换一个目标也能用的做法"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>回到开头那条读不下去的 <code>call</code>：加载器提供了零空间，DllMain 生成指令记录，生产循环把记录写成片段与跳转，受保护函数再从续体接着跑。换一个目标时，这次的经验可以压缩成几条检查：</p>
+<ul>
+<li>调用或跳转落进 VirtualSize 超出 SizeOfRawData 的区域，就说明有运行时写手。先按加载顺序找写入时机，不要在磁盘上找内容。</li>
+<li><code>call</code> 后面紧跟填充时，先去目标处找丢弃返回地址的指令（这里是 <code>lea rsp,[rsp+8]</code>）和显式续体。替换长度只说明字节数，不说明指令数。</li>
+<li>在可执行段里扫描可疑引用之前，先用 PE 目录把异常表这类数据区排除掉。</li>
+<li>生成出来的表要靠执行初始化代码来复现。匹配时用多个独立约束求交，覆盖率不满时先查扫描范围。</li>
+<li>比对运行时结果时，先把绝对地址归一化，比较两份同样打包的产物。</li>
+</ul>
+<h2 id="样本">样本<a class="anchor" href="#样本"><span class="anchor-icon" data-pagefind-ignore="">#</span></a></h2>
+<p>文中 UnityPlayer 地址均为 RVA，EndfieldBase 的 <code>+偏移</code> 相对它自己的基址，生成页地址标为运行时 VA。原构建 SHA-256：Endfield.exe <code>A9726459D9AB90CF01D7536A4250315E85EBFE12DA493AC16F7BAD3B68E7DF99</code>，EndfieldBase.dll <code>E653A4C3847D6E999549267ECECAA9CDAE10D0C7C74245CA7F029B8C2FA3B0F1</code>，UnityPlayer.dll <code>B47728BA10F09C46E8A107B4C7055E48CFE402D3D8C88A4529074981F9672AA2</code>。</p>
+<p>相关分析：<a href="https://github.com/zushinzackery2-ship-it/tvm0/blob/c9d1acd5e7c84f13c3a39a3a3dac905ba364b01e/docs/Endfield-%E5%90%AF%E5%8A%A8%E5%A3%B3%E5%B1%95%E5%BC%80%E4%B8%8E%E5%AD%97%E8%8A%82%E5%A1%AB%E5%85%85.md">启动壳展开、记录编码与双构建还原</a>。</p> </article> <nav class="post-nav" aria-label="相邻文章" data-astro-cid-u3wiumwa> <div class="nav-cell" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/46-endfield-sparse-vfsaes-and-parameters/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa> <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8592;</span> 上一篇
+</span> <span class="nav-title" data-astro-cid-u3wiumwa>终末地 VFSAES 的稀疏变换与参数</span> </a> </div> <div class="nav-cell next" data-astro-cid-u3wiumwa> <a class="nav-link" href="/blog/minimalist/28-archetype-ecs-render-streaming-boundary/" data-astro-cid-u3wiumwa> <span class="nav-label micro" data-astro-cid-u3wiumwa>
+下一篇 <span aria-hidden="true" data-astro-cid-u3wiumwa>&#8594;</span> </span> <span class="nav-title" data-astro-cid-u3wiumwa>Archetype ECS 的渲染提交与流式列补写</span> </a> </div> </nav> </div> </div>   <footer class="micro"> <a class="back" href="/blog/minimalist/"> <span class="arrow" aria-hidden="true">&#8592;</span> 返回技术索引 </a> <span class="copy">&copy; 2026 Shrei</span> <span class="colophon">Grid / Grotesk / Red &mdash; Built with Astro</span> </footer> </div>  </body></html>
